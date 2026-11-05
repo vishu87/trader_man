@@ -1,0 +1,38 @@
+{
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "build": "vite build",
+        "dev": "vite"
+    },
+    "devDependencies": {
+        "autoprefixer": "^10.4.20",
+        "axios": "^1.7.4",
+        "concurrently": "^9.0.1",
+        "laravel-vite-plugin": "^1.1.1",
+        "postcss": "^8.4.47",
+        "sass-embedded": "^1.89.2",
+        "tailwindcss": "^3.4.13",
+        "vite": "^6.0.11"
+    },
+    "dependencies": {
+        "@inertiajs/inertia": "^0.11.1",
+        "@inertiajs/inertia-vue3": "^0.6.0",
+        "@inertiajs/vue3": "^2.0.2",
+        "@tiptap/starter-kit": "^2.22.0",
+        "@tiptap/vue-3": "^2.22.0",
+        "@vitejs/plugin-vue": "^5.2.1",
+        "@vuelidate/core": "^2.0.3",
+        "@vuelidate/validators": "^2.0.4",
+        "@vuepic/vue-datepicker": "^11.0.2",
+        "chart.js": "^4.5.0",
+        "cropperjs": "^1.5.13",
+        "vee-validate": "^4.15.0",
+        "vue": "^3.5.13",
+        "vue-advanced-cropper": "^2.8.9",
+        "vue-chartjs": "^5.3.2",
+        "vue-cropperjs": "^5.0.0",
+        "vue3-markdown": "^1.1.9",
+        "yup": "^1.6.1"
+    }
+}

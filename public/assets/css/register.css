@@ -1,0 +1,326 @@
+@font-face {
+  font-family: "vivoFont";
+  src: url("./vivo_fonts/vivoSansGlobal-Thin.ttf") format("truetype");
+  font-weight: 100;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "vivoFont";
+  src: url("./vivo_fonts/vivoSansGlobal-Extralight.ttf") format("truetype");
+  font-weight: 200;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "vivoFont";
+  src: url("./vivo_fonts/vivoSansGlobal-Light.ttf") format("truetype");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "vivoFont";
+  src: url("./vivo_fonts/vivoSansGlobal-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "vivoFont";
+  src: url("./vivo_fonts/vivoSansGlobal-Medium.ttf") format("truetype");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "vivoFont";
+  src: url("./vivo_fonts/vivoSansGlobal-Demibold.ttf") format("truetype");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "vivoFont";
+  src: url("./vivo_fonts/vivoSansGlobal-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "vivoFont";
+  src: url("./vivo_fonts/vivoSansGlobal-Extrabold.ttf") format("truetype");
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "vivoFont";
+  src: url("./vivo_fonts/vivoSansGlobal-Heavy.ttf") format("truetype");
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+body.reg-page {
+  min-height: 100vh;
+  color: #111;
+  font-family: "vivoFont";
+  background: #dfe2fb url("../images/bg image_1.jpg") center/cover no-repeat fixed;
+}
+
+.reg-wrap {
+  max-width: 1600px;
+  padding-top: 2rem;
+  padding-bottom: 2rem;
+}
+
+.reg-logo {
+  height: 42px;
+  width: auto;
+  margin-bottom: 20px;
+  margin-top: 10px;
+}
+
+.reg-title {
+  font-weight: 700;
+  line-height: 1.15;
+  font-size: 3rem;
+  margin: 1.25rem 0 1rem;
+}
+.reg-title span {
+  color: #3f51d8;
+}
+
+.reg-lead {
+  font-size: 1rem;
+}
+
+.reg-hero-img {
+  width: 100%;
+  max-width: 460px;
+  height: auto;
+}
+
+.reg-card {
+  background: rgba(255, 255, 255, 0.92);
+  border-radius: 1.25rem;
+  padding: 2rem;
+  box-shadow: 0 10px 40px rgba(60, 70, 160, 0.12);
+}
+@media (max-width: 575.98px) {
+  .reg-card {
+    padding: 1.25rem;
+  }
+}
+
+.reg-card-title {
+  font-size: 1.35rem;
+  font-weight: 700;
+  margin-bottom: 0.25rem;
+}
+
+.reg-card .form-label {
+  font-weight: 500;
+  margin-bottom: 0.35rem;
+}
+
+.reg-card .req {
+  color: #dc3545;
+}
+
+.reg-card .form-control,
+.reg-card .form-select,
+.reg-card .input-group-text {
+  background-color: #f3f4fc;
+  border-color: #d9dbee;
+  border-radius: 0.6rem;
+  padding: 0.7rem 0.9rem;
+}
+
+.reg-card .input-group > .input-group-text {
+  border-right: 0;
+  border-radius: 0.6rem 0 0 0.6rem;
+  font-weight: 600;
+}
+
+.reg-card .input-group > .form-control {
+  border-left: 0;
+  border-radius: 0 0.6rem 0.6rem 0;
+}
+
+.reg-card .form-control:focus,
+.reg-card .form-select:focus {
+  background-color: #fff;
+  border-color: #3f51d8;
+  box-shadow: 0 0 0 0.2rem rgba(63, 81, 216, 0.15);
+}
+
+.reg-native-select {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.reg-select {
+  position: relative;
+}
+
+.reg-select-toggle {
+  position: relative;
+  width: 100%;
+  min-height: 48px;
+  padding: 0.7rem 2.25rem 0.7rem 0.9rem;
+  color: #111;
+  text-align: left;
+  background-color: #f3f4fc;
+  border: 1px solid #d9dbee;
+  border-radius: 0.6rem;
+}
+
+.reg-select-toggle::after {
+  position: absolute;
+  top: 50%;
+  right: 0.9rem;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-right: 1.5px solid #111;
+  border-bottom: 1.5px solid #111;
+  content: "";
+  transform: translateY(-65%) rotate(45deg);
+}
+
+.reg-select-toggle:focus {
+  background-color: #fff;
+  border-color: #3f51d8;
+  box-shadow: 0 0 0 0.2rem rgba(63, 81, 216, 0.15);
+  outline: 0;
+}
+
+.reg-select-toggle:disabled {
+  color: #6c757d;
+  cursor: not-allowed;
+  opacity: 1;
+}
+
+.reg-select-toggle.is-invalid {
+  border-color: #dc3545;
+}
+
+.reg-select-menu {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  z-index: 1050;
+  display: none;
+  width: 100%;
+  max-height: 240px;
+  padding: 0.25rem 0;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #d9dbee;
+  border-radius: 0.35rem;
+  box-shadow: 0 10px 28px rgba(60, 70, 160, 0.16);
+}
+
+.reg-select.open .reg-select-menu {
+  display: block;
+}
+
+.reg-select-option {
+  display: block;
+  width: 100%;
+  padding: 0.55rem 0.9rem;
+  color: #111;
+  text-align: left;
+  background: transparent;
+  border: 0;
+}
+
+.reg-select-option:hover,
+.reg-select-option:focus,
+.reg-select-option.selected {
+  color: #fff;
+  background: #2875d0;
+  outline: 0;
+}
+
+.reg-select-option:disabled {
+  color: #6c757d;
+  cursor: not-allowed;
+  background: transparent;
+}
+
+.reg-terms {
+  background: #f3f4fc;
+  border-radius: 0.75rem;
+  padding: 1rem 1.25rem 1rem 2.25rem;
+  font-size: 0.9rem;
+  overflow-y: auto;
+}
+.reg-terms ol {
+  margin: 0;
+  padding-left: 0.25rem;
+}
+.reg-terms li + li {
+  margin-top: 0.25rem;
+}
+.reg-terms .reg-disclaimer {
+  margin-top: 0.85rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid #d9dbee;
+}
+
+.btn-register {
+  background: #23349a;
+  border-color: #23349a;
+  color: #fff;
+  border-radius: 0.6rem;
+  padding: 0.7rem 2.5rem;
+  font-weight: 600;
+}
+.btn-register:hover, .btn-register:focus {
+  background: #1c2a80;
+  border-color: #1c2a80;
+  color: #fff;
+}
+
+.reg-success {
+  text-align: center;
+  padding: 4rem 1rem;
+}
+.reg-success img {
+  max-width: 180px;
+  height: auto;
+}
+.reg-success h2 {
+  color: #3f51d8;
+  font-weight: 600;
+  margin: 2.5rem 0 1.5rem;
+}
+.reg-success h3 {
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+.reg-success p {
+  max-width: 34rem;
+  margin: 1rem auto 0;
+}
+
+@media screen and (max-width: 480px) {
+  .reg-logo {
+    height: 32px;
+  }
+  .reg-title {
+    font-size: 2rem;
+  }
+  .reg-hero-img {
+    max-width: 80%;
+  }
+  .img-cont {
+    text-align: center;
+  }
+}
+
+/*# sourceMappingURL=register.css.map */

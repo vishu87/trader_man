@@ -1,0 +1,273 @@
+// Public registration landing page (Bootstrap 5 + a few brand touches)
+$brand:       #3f51d8;
+$brand-dark:  #23349a;
+$brand-darker: #1c2a80;
+$input-bg:    #f3f4fc;
+$input-line:  #d9dbee;
+
+@font-face {
+  font-family: "vivoFont";
+  src: url("./vivo_fonts/vivoSansGlobal-Thin.ttf") format("truetype");
+  font-weight: 100;
+  font-style: normal;
+  font-display: swap; }
+@font-face {
+  font-family: "vivoFont";
+  src: url("./vivo_fonts/vivoSansGlobal-Extralight.ttf") format("truetype");
+  font-weight: 200;
+  font-style: normal;
+  font-display: swap; }
+@font-face {
+  font-family: "vivoFont";
+  src: url("./vivo_fonts/vivoSansGlobal-Light.ttf") format("truetype");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap; }
+@font-face {
+  font-family: "vivoFont";
+  src: url("./vivo_fonts/vivoSansGlobal-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap; }
+@font-face {
+  font-family: "vivoFont";
+  src: url("./vivo_fonts/vivoSansGlobal-Medium.ttf") format("truetype");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap; }
+@font-face {
+  font-family: "vivoFont";
+  src: url("./vivo_fonts/vivoSansGlobal-Demibold.ttf") format("truetype");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap; }
+@font-face {
+  font-family: "vivoFont";
+  src: url("./vivo_fonts/vivoSansGlobal-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap; }
+@font-face {
+  font-family: "vivoFont";
+  src: url("./vivo_fonts/vivoSansGlobal-Extrabold.ttf") format("truetype");
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap; }
+@font-face {
+  font-family: "vivoFont";
+  src: url("./vivo_fonts/vivoSansGlobal-Heavy.ttf") format("truetype");
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap; }
+
+body.reg-page {
+  min-height: 100vh;
+  color: #111;
+  font-family: "vivoFont";
+  background: #dfe2fb url('../images/bg image_1.jpg') center / cover no-repeat fixed;
+}
+
+.reg-wrap {
+  max-width: 1600px;
+  padding-top: 2rem;
+  padding-bottom: 2rem;
+}
+
+.reg-logo { height: 42px; width: auto; margin-bottom: 20px; margin-top: 10px; }
+
+.reg-title {
+  font-weight: 700;
+  line-height: 1.15;
+  font-size: 3rem;
+  margin: 1.25rem 0 1rem;
+  span { color: $brand; }
+}
+
+.reg-lead { font-size: 1rem; }
+
+.reg-hero-img {
+  width: 100%;
+  max-width: 460px;
+  height: auto;
+}
+
+.reg-card {
+  background: rgba(255, 255, 255, .92);
+  border-radius: 1.25rem;
+  padding: 2rem;
+  box-shadow: 0 10px 40px rgba(60, 70, 160, .12);
+
+  @media (max-width: 575.98px) { padding: 1.25rem; }
+}
+
+.reg-card-title { font-size: 1.35rem; font-weight: 700; margin-bottom: .25rem; }
+
+.reg-card .form-label { font-weight: 500; margin-bottom: .35rem; }
+.reg-card .req { color: #dc3545; }
+
+.reg-card .form-control,
+.reg-card .form-select,
+.reg-card .input-group-text {
+  background-color: $input-bg;
+  border-color: $input-line;
+  border-radius: .6rem;
+  padding: .7rem .9rem;
+}
+
+.reg-card .input-group > .input-group-text { border-right: 0; border-radius: .6rem 0 0 .6rem; font-weight: 600; }
+.reg-card .input-group > .form-control { border-left: 0; border-radius: 0 .6rem .6rem 0; }
+
+.reg-card .form-control:focus,
+.reg-card .form-select:focus {
+  background-color: #fff;
+  border-color: $brand;
+  box-shadow: 0 0 0 .2rem rgba($brand, .15);
+}
+
+.reg-native-select {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.reg-select {
+  position: relative;
+}
+
+.reg-select-toggle {
+  position: relative;
+  width: 100%;
+  min-height: 48px;
+  padding: .7rem 2.25rem .7rem .9rem;
+  color: #111;
+  text-align: left;
+  background-color: $input-bg;
+  border: 1px solid $input-line;
+  border-radius: .6rem;
+
+  &::after {
+    position: absolute;
+    top: 50%;
+    right: .9rem;
+    width: .5rem;
+    height: .5rem;
+    border-right: 1.5px solid #111;
+    border-bottom: 1.5px solid #111;
+    content: "";
+    transform: translateY(-65%) rotate(45deg);
+  }
+
+  &:focus {
+    background-color: #fff;
+    border-color: $brand;
+    box-shadow: 0 0 0 .2rem rgba($brand, .15);
+    outline: 0;
+  }
+
+  &:disabled {
+    color: #6c757d;
+    cursor: not-allowed;
+    opacity: 1;
+  }
+
+  &.is-invalid {
+    border-color: #dc3545;
+  }
+}
+
+.reg-select-menu {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  z-index: 1050;
+  display: none;
+  width: 100%;
+  max-height: 240px;
+  padding: .25rem 0;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid $input-line;
+  border-radius: .35rem;
+  box-shadow: 0 10px 28px rgba(60, 70, 160, .16);
+}
+
+.reg-select.open .reg-select-menu {
+  display: block;
+}
+
+.reg-select-option {
+  display: block;
+  width: 100%;
+  padding: .55rem .9rem;
+  color: #111;
+  text-align: left;
+  background: transparent;
+  border: 0;
+
+  &:hover,
+  &:focus,
+  &.selected {
+    color: #fff;
+    background: #2875d0;
+    outline: 0;
+  }
+
+  &:disabled {
+    color: #6c757d;
+    cursor: not-allowed;
+    background: transparent;
+  }
+}
+
+.reg-terms {
+  background: $input-bg;
+  border-radius: .75rem;
+  padding: 1rem 1.25rem 1rem 2.25rem;
+  font-size: .9rem;
+  // max-height: 260px;
+  overflow-y: auto;
+
+  ol { margin: 0; padding-left: .25rem; }
+  li + li { margin-top: .25rem; }
+
+  .reg-disclaimer { margin-top: .85rem; padding-top: .85rem; border-top: 1px solid $input-line; }
+}
+
+.btn-register {
+  background: $brand-dark;
+  border-color: $brand-dark;
+  color: #fff;
+  border-radius: .6rem;
+  padding: .7rem 2.5rem;
+  font-weight: 600;
+
+  &:hover, &:focus { background: $brand-darker; border-color: $brand-darker; color: #fff; }
+}
+
+.reg-success {
+  text-align: center;
+  padding: 4rem 1rem;
+
+  img { max-width: 180px; height: auto }
+  h2 { color: $brand; font-weight: 600; margin: 2.5rem 0 1.5rem; }
+  h3 { font-size: 1.25rem; font-weight: 700; }
+  p  { max-width: 34rem; margin: 1rem auto 0; }
+}
+
+
+@media screen and (max-width: 480px) {
+  .reg-logo {
+    height: 32px;
+  }
+  .reg-title {
+    font-size: 2rem;
+  }
+  .reg-hero-img {
+    max-width: 80%;
+  }
+  .img-cont {
+    text-align:center;
+  }
+}

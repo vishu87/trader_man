@@ -1,0 +1,237 @@
+// ─── Design Tokens ───────────────────────────────────────────────
+// Canvas & surface
+$canvas-bg:         #F4F6F9;
+$card-bg:           #FFFFFF;
+$card-border:       #E7EBF1;
+$table-header-bg:   #FBFCFE;
+$row-divider:       #F1F3F7;
+$row-hover:         #F9FBFD;
+
+// Sidebar
+$sidebar-start:     #0C2140;
+$sidebar-end:       #0A1B34;
+$sidebar-border:    rgba(255,255,255,0.05);
+$sidebar-text:      #93A4C1;
+$sidebar-text-active: #FFFFFF;
+$sidebar-muted:     #7C8DAB;
+$sidebar-hover-bg:  rgba(255,255,255,0.05);
+$sidebar-active-bg: rgba(255,255,255,0.08);
+$sidebar-accent:    #4A82FF;
+$sidebar-section:   #5E6F8C;
+$sidebar-width:     248px;
+
+// Brand
+$brand-logo-start:  #4A82FF;
+$brand-logo-end:    #2453D6;
+
+// Primary blue
+$primary:           #2E6BFF;
+$primary-hover:     #235CE0;
+$primary-shadow:    rgba(46,107,255,0.30);
+
+// Text
+$text-heading:      #101828;
+$text-body:         #475467;
+$text-body-alt:     #344054;
+$text-muted-1:      #667085;
+$text-muted-2:      #8A94A6;
+$text-muted-3:      #98A2B3;
+$text-table-header: #94A0B0;
+
+// Semantic – green
+$green-bg:          #E7F6EF;
+$green-text:        #0B7A53;
+$green-dot:         #12A06A;
+
+// Semantic – amber
+$amber-bg:          #FFF3DE;
+$amber-text:        #9A6700;
+$amber-dot:         #E0A52B;
+
+// Semantic – red
+$red-bg:            #FCEAE8;
+$red-text:          #B23A30;
+$red-dot:           #D6483B;
+$notification-red:  #E0483B;
+
+// Semantic – neutral
+$neutral-bg:        #EEF1F6;
+$neutral-text:      #5B6675;
+$neutral-dot:       #9AA4B2;
+
+// Semantic – purple
+$purple:            #7C4DE0;
+
+// Icon tile tints
+$tile-blue-bg:      #EEF4FF;
+$tile-blue-fg:      #2E6BFF;
+$tile-violet-bg:    #EEEFFF;
+$tile-violet-fg:    #5B53E0;
+$tile-teal-bg:      #E6F7F4;
+$tile-teal-fg:      #0E9C84;
+$tile-purple-bg:    #F3EEFF;
+$tile-purple-fg:    #7C4DE0;
+
+// Border / UI
+$border:            #E2E7EF;
+$border-light:      #E7EBF1;
+$input-bg:          #F8FAFC;
+$badge-pill-bg:     #EEF2F8;
+$badge-pill-text:   #5E6F8C;
+$badge-pill-border: #E3E9F2;
+
+// Topbar
+$topbar-height:     64px;
+$topbar-bg:         #FFFFFF;
+$topbar-border:     #E7EBF1;
+
+// Typography
+$font-sans:         'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+$font-mono:         'IBM Plex Mono', 'Courier New', monospace;
+
+// Radius
+$radius-card:       14px;
+$radius-btn:        9px;
+$radius-chip:       999px;
+$radius-tile:       8px;
+$radius-logo:       9px;
+
+// Shadows
+$shadow-card:       0 1px 2px rgba(16,24,40,0.04);
+$shadow-primary:    0 2px 8px rgba(46,107,255,0.30);
+
+// ─── CSS Custom Properties ────────────────────────────────────────
+:root {
+  --canvas-bg:          #{$canvas-bg};
+  --card-bg:            #{$card-bg};
+  --card-border:        #{$card-border};
+  --table-header-bg:    #{$table-header-bg};
+  --row-divider:        #{$row-divider};
+  --row-hover:          #{$row-hover};
+
+  --sidebar-start:      #{$sidebar-start};
+  --sidebar-end:        #{$sidebar-end};
+  --sidebar-border:     #{$sidebar-border};
+  --sidebar-text:       #{$sidebar-text};
+  --sidebar-active:     #{$sidebar-text-active};
+  --sidebar-muted:      #{$sidebar-muted};
+  --sidebar-hover-bg:   #{$sidebar-hover-bg};
+  --sidebar-active-bg:  #{$sidebar-active-bg};
+  --sidebar-accent:     #{$sidebar-accent};
+  --sidebar-section:    #{$sidebar-section};
+  --sidebar-width:      #{$sidebar-width};
+
+  --primary:            #{$primary};
+  --primary-hover:      #{$primary-hover};
+  --primary-shadow:     #{$primary-shadow};
+
+  --text-heading:       #{$text-heading};
+  --text-body:          #{$text-body};
+  --text-muted:         #{$text-muted-1};
+  --text-muted-2:       #{$text-muted-2};
+  --text-muted-3:       #{$text-muted-3};
+  --text-table-header:  #{$text-table-header};
+
+  --green-bg:           #{$green-bg};
+  --green-text:         #{$green-text};
+  --green-dot:          #{$green-dot};
+  --amber-bg:           #{$amber-bg};
+  --amber-text:         #{$amber-text};
+  --amber-dot:          #{$amber-dot};
+  --red-bg:             #{$red-bg};
+  --red-text:           #{$red-text};
+  --red-dot:            #{$red-dot};
+  --neutral-bg:         #{$neutral-bg};
+  --neutral-text:       #{$neutral-text};
+  --notification-red:   #{$notification-red};
+
+  --border:             #{$border};
+  --border-light:       #{$border-light};
+  --input-bg:           #{$input-bg};
+  --badge-pill-bg:      #{$badge-pill-bg};
+  --badge-pill-text:    #{$badge-pill-text};
+  --badge-pill-border:  #{$badge-pill-border};
+
+  --topbar-height:      #{$topbar-height};
+  --font-sans:          #{$font-sans};
+  --font-mono:          #{$font-mono};
+
+  --radius-card:        #{$radius-card};
+  --radius-btn:         #{$radius-btn};
+  --radius-chip:        #{$radius-chip};
+  --radius-tile:        #{$radius-tile};
+
+  --shadow-card:        #{$shadow-card};
+  --shadow-primary:     #{$shadow-primary};
+}
+
+// ─── Global Reset / Base ─────────────────────────────────────────
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: $font-sans;
+  font-size: 14px;
+  color: $text-heading;
+  background: $canvas-bg;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+// ─── Scrollbar ───────────────────────────────────────────────────
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #D4DAE3;
+  border-radius: 8px;
+  border: 2px solid $canvas-bg;
+  &:hover { background: #B9C2CF; }
+}
+
+// ─── Status Chips ────────────────────────────────────────────────
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px 3px 8px;
+  border-radius: $radius-chip;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+
+  &::before {
+    content: '';
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  &.chip-green  { background: $green-bg;   color: $green-text;   &::before { background: $green-dot; } }
+  &.chip-amber  { background: $amber-bg;   color: $amber-text;   &::before { background: $amber-dot; } }
+  &.chip-red    { background: $red-bg;     color: $red-text;     &::before { background: $red-dot; } }
+  &.chip-neutral { background: $neutral-bg; color: $neutral-text; &::before { background: #9AA4B2; } }
+}
+
+// ─── Cards ───────────────────────────────────────────────────────
+.card-panel {
+  background: $card-bg;
+  border: 1px solid $card-border;
+  border-radius: $radius-card;
+  box-shadow: $shadow-card;
+}
+
+// ─── Monospace ───────────────────────────────────────────────────
+.mono {
+  font-variant-numeric: tabular-nums;
+}
