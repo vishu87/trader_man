@@ -17,10 +17,14 @@ use App\Services\CandleStats;
 use App\Services\CandleSyncService;
 use App\Services\CandleCleaner;
 use App\Services\FibService;
+use App\Services\Indicators;
 
 class ChartsController extends Controller
 {
     const DEFAULT_BARS = 200;
+    const RSI_PERIOD = 14;       // the chart's RSI: the usual 14, with a 20-period average of it (the Stock Scanner has its own RSI 9)
+    const RSI_AVG_PERIOD = 20;
+    const RSI_WARMUP = 300;   // extra candles before the shown ones, so the RSI has settled
 
     // ─── Page ────────────────────────────────────────────────────────────────
 
@@ -165,6 +169,7 @@ class ChartsController extends Controller
             'exchange'  => 'nullable|in:NSE,BSE',
             'timeframe' => 'required|in:daily,weekly,monthly',
             'bars'      => 'nullable|integer|min:20|max:1000',
+            'rsi'       => 'nullable|boolean',
         ]);
         if (!$validator->passes()) {
             return Response::json(['success' => false, 'message' => $validator->errors()->first()], 200);
@@ -174,11 +179,21 @@ class ChartsController extends Controller
 
         // newest N, then back into chronological order. Indicators are stored with the candle,
         // so even the first visible candle already has its full moving-average history behind it.
+        // RSI is smoothed over the whole history, so it is computed over more candles than are shown and then cut to the shown ones
+        $withRsi = $request->boolean('rsi');
         $rows = DB::table('stock_candles')
             ->where('exchange', $request->exchange ?: 'NSE')
             ->where('symbol', strtoupper(trim($request->symbol)))
             ->where('timeframe', $request->timeframe)
-            ->orderByDesc('date')->limit($bars)->get()->reverse()->values();
+            ->orderByDesc('date')->limit($bars + ($withRsi ? self::RSI_WARMUP : 0))->get()->reverse()->values();
+
+        $rsi = null;
+        if ($withRsi) {
+            $r = Indicators::rsi($rows->map(fn ($x) => (float) $x->close)->all(), self::RSI_PERIOD);
+            $cut = fn (array $v) => array_map(fn ($x) => $x !== null ? round($x, 2) : null, array_slice($v, -min($bars, count($v))));
+            $rsi = ['period' => self::RSI_PERIOD, 'avg_period' => self::RSI_AVG_PERIOD, 'rsi' => $cut($r), 'avg' => $cut(Indicators::sma($r, self::RSI_AVG_PERIOD))];
+            $rows = $rows->slice(-min($bars, $rows->count()))->values();
+        }
 
         $col = fn ($name) => $rows->map(fn ($r) => $r->{$name} !== null ? (float) $r->{$name} : null)->all();
 
@@ -205,6 +220,7 @@ class ChartsController extends Controller
             'volumes'     => $rows->map(fn ($r) => (int) $r->volume)->all(),
             'volume_ma21' => $rows->map(fn ($r) => $r->volume_ma21 !== null ? (int) $r->volume_ma21 : null)->all(),
             'lines'       => $lines,
+            'rsi'         => $rsi,
         ], 200);
     }
 

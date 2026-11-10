@@ -3,13 +3,13 @@
 import * as echarts from 'echarts/core';
 import { CandlestickChart, LineChart, BarChart } from 'echarts/charts';
 import {
-    GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, MarkLineComponent, MarkAreaComponent, AxisPointerComponent,
+    GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, MarkLineComponent, MarkAreaComponent, AxisPointerComponent, TitleComponent,
 } from 'echarts/components';
 import { CanvasRenderer } from 'echarts/renderers';
 
 echarts.use([
     CandlestickChart, LineChart, BarChart,
-    GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, MarkLineComponent, MarkAreaComponent, AxisPointerComponent,
+    GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, MarkLineComponent, MarkAreaComponent, AxisPointerComponent, TitleComponent,
     CanvasRenderer,
 ]);
 
@@ -109,12 +109,14 @@ export function fibShapes(swings, xAxis, lastIdx, range, compact = false) {
  * @param marks price lines [{label, price, color}] — avg price, buy price, stop loss
  * @param opts  { fibs: [swing] } Fibonacci swings (see fibShapes), drawn on every timeframe: the chart gets an empty gap on its
  *              right for them to run into and for their labels;
+ *              { rsi: true } adds an RSI pane under the price (RSI 14 with its 20-period average, from data.rsi);
  *              { compact: true } for the popup, where three charts share one laptop screen: smaller text, a tighter legend,
  *              and the plot given more of the width
  */
 export function buildOption(data, marks = [], opts = {}) {
     const compact = !!opts.compact;
     const candles = data.candles;
+    const rsi = opts.rsi && data.rsi ? data.rsi : null;   // RSI pane: RSI(period) + its average, aligned with the candles
 
     // Y range from the candles; a price line only stretches the axis when it is near the price action,
     // so a far-away stop loss does not squash the candles flat. Fibonacci levels follow the same rule.
@@ -180,6 +182,19 @@ export function buildOption(data, marks = [], opts = {}) {
         },
     ];
 
+    // RSI pane (its own grid, index 2): the RSI line and its average, with dashed guides at 30 and 70
+    if (rsi) {
+        const guide = { symbol: 'none', silent: true, lineStyle: { color: '#B6BECB', type: 'dashed', width: 1 }, label: { show: false }, data: [{ yAxis: 30 }, { yAxis: 70 }] };
+        const line = (name, values, color, width, extra = {}) => ({
+            name, type: 'line', xAxisIndex: 2, yAxisIndex: 2, data: values, showSymbol: false, smooth: false,
+            lineStyle: { width, color }, itemStyle: { color }, ...extra,
+        });
+        series.push(
+            line('RSI ' + rsi.period, rsi.rsi, '#1B2A4A', 1.2, { markLine: guide }),
+            line('RSI avg ' + rsi.avg_period, rsi.avg, '#E03131', 1),
+        );
+    }
+
     const axis = (gridIndex, show) => ({
         type: 'category',
         gridIndex,
@@ -204,23 +219,29 @@ export function buildOption(data, marks = [], opts = {}) {
             : { top: 0, data: data.lines.map(l => l.name), selectedMode: true },
         tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
         axisPointer: { link: [{ xAxisIndex: 'all' }] },
+        // price, volume and (when asked for) RSI — the RSI grid is index 2 but sits between the other two
         grid: compact
             ? [
-                { left: 46, right: hasFib ? rightMargin : right, top: 26, height: '64%' },
-                { left: 46, right: hasFib ? rightMargin : right, top: '80%', height: '14%' },
+                { left: 46, right: hasFib ? rightMargin : right, top: 26, height: rsi ? '55%' : '64%' },
+                { left: 46, right: hasFib ? rightMargin : right, top: rsi ? '86%' : '80%', height: rsi ? '10%' : '14%' },
+                ...(rsi ? [{ left: 46, right: hasFib ? rightMargin : right, top: '67%', height: '15%' }] : []),
             ]
             : [
-                { left: '6%', right: hasFib ? rightMargin : right, top: 34, height: '62%' },
-                { left: '6%', right: hasFib ? rightMargin : right, top: '78%', height: '16%' },
+                { left: '6%', right: hasFib ? rightMargin : right, top: 34, height: rsi ? '50%' : '62%' },
+                { left: '6%', right: hasFib ? rightMargin : right, top: rsi ? '86%' : '78%', height: rsi ? '10%' : '16%' },
+                ...(rsi ? [{ left: '6%', right: hasFib ? rightMargin : right, top: '67%', height: '15%' }] : []),
             ],
-        xAxis: [axis(0, true), axis(1, false)],
+        xAxis: [axis(0, true), axis(1, false), ...(rsi ? [axis(2, false)] : [])],
         yAxis: [
             // min/max are padded (not round numbers), so hide the two end labels that would crowd the nearest round tick
             { scale: true, min: yMin, max: yMax, splitArea: { show: false }, axisLabel: { showMinLabel: false, showMaxLabel: false, fontSize: compact ? 10 : 12 } },
             { scale: true, gridIndex: 1, splitNumber: 2, axisLabel: { show: false }, axisLine: { show: false }, axisTick: { show: false }, splitLine: { show: false } },
+            // RSI runs 0–100; only the 30 and 70 guides are labelled
+            ...(rsi ? [{ gridIndex: 2, min: 0, max: 100, interval: 10, axisLabel: { fontSize: compact ? 9 : 11, showMinLabel: false, showMaxLabel: false, formatter: (v) => (v === 30 || v === 70) ? v : '' }, axisLine: { show: false }, axisTick: { show: false }, splitLine: { show: false } }] : []),
         ],
+        title: rsi ? { text: 'RSI ' + rsi.period, left: compact ? 50 : '7%', top: '64.5%', textStyle: { fontSize: 10, fontWeight: 'normal', color: '#667085' } } : undefined,
         // Ctrl + wheel zooms and dragging pans; a plain wheel still scrolls the page past the chart
-        dataZoom: [{ type: 'inside', xAxisIndex: [0, 1], zoomOnMouseWheel: 'ctrl', moveOnMouseMove: true, moveOnMouseWheel: false }],
+        dataZoom: [{ type: 'inside', xAxisIndex: rsi ? [0, 1, 2] : [0, 1], zoomOnMouseWheel: 'ctrl', moveOnMouseMove: true, moveOnMouseWheel: false }],
         series,
     };
 }

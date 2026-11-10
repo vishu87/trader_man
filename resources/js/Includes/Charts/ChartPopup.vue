@@ -352,7 +352,7 @@ function onSync() { startSync(); }
                         <!-- keyed by symbol and view: every Next / Previous / pill gives fresh panes sized for it -->
                         <ChartPane
                             v-for="p in panes" :key="keyOf(current) + p.tf + view"
-                            :item="paneItem" :timeframe="p.tf" :bars="p.bars" :reload-key="reloadKey" :picking="fibPicking" compact auto-start
+                            :item="paneItem" :timeframe="p.tf" :bars="p.bars" :reload-key="reloadKey" :picking="fibPicking" compact rsi auto-start
                             @sync="onSync" @loaded="onLoaded" @pick="(c) => fibRef && fibRef.onPicked(c)"
                         />
                     </div>

@@ -10,6 +10,7 @@ const props = defineProps({
     reloadKey: { type: Number, default: 0 },       // bump to refetch (e.g. after a sync)
     compact:   { type: Boolean, default: false },  // popup mode: fills its box, smaller text
     autoStart: { type: Boolean, default: false },  // load straight away instead of waiting to scroll into view
+    rsi:       { type: Boolean, default: false },  // add an RSI pane under the price (RSI 14 with its 20-period average)
     picking:   { type: Boolean, default: false },  // the Fibonacci editor wants a candle: a click on one is sent up as 'pick'
 });
 
@@ -35,7 +36,7 @@ let started = false;
 function load() {
     status.value = 'loading';
     DBService.postData('/api/charts/candles', {
-        symbol: props.item.symbol, exchange: props.item.exchange, timeframe: props.timeframe, bars: props.bars,
+        symbol: props.item.symbol, exchange: props.item.exchange, timeframe: props.timeframe, bars: props.bars, rsi: props.rsi ? 1 : 0,
     }).then((res) => {
         if (!res.success) { status.value = 'error'; return; }
         if (!res.candles.length) { status.value = 'empty'; return; }
@@ -54,7 +55,7 @@ function load() {
 function onChartClick(e) {
     if (!props.picking || !chart || !data) return;
     const p = [e.offsetX, e.offsetY];
-    for (const g of [0, 1]) {
+    for (const g of [0, 1, 2]) {   // price, volume, RSI
         if (!chart.containPixel({ gridIndex: g }, p)) continue;
         const i = Math.round(chart.convertFromPixel({ gridIndex: g }, p)[0]);
         if (!(i >= 0 && i < data.candles.length)) return;
@@ -72,7 +73,7 @@ function draw() {
         resizer.observe(chartEl.value);
         chart.getZr().on('click', onChartClick);
     }
-    chart.setOption(buildOption(data, props.item.marks, { compact: props.compact, fibs: props.item.fibs || [] }), true);
+    chart.setOption(buildOption(data, props.item.marks, { compact: props.compact, fibs: props.item.fibs || [], rsi: props.rsi }), true);
 }
 
 onMounted(() => {
