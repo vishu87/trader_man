@@ -165,7 +165,7 @@ class LiveTick
             return ['ok' => true, 'message' => 'Exit requested — the sell goes out as soon as the waiting buy order is cancelled'];
         }
 
-        $ltp = $this->broker->ltp([$pos->symbol])[$pos->symbol] ?? null;
+        try { $ltp = $this->broker->ltp([$pos->symbol])[$pos->symbol] ?? null; } catch (\Throwable $e) { $ltp = null; }   // the broker is not reachable: the exit stays requested
         if (!$ltp) return ['ok' => true, 'message' => 'Exit requested, but there is no live price right now — the next minute’s check sells it'];
 
         $order = $this->placeExit($pos, 'manual', $cfg, $ltp);

@@ -1483,6 +1483,70 @@ a.tbl-icon-btn {
   color: #667085;
 }
 
+.ls-ex {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: #EEF1F6;
+  color: #667085;
+  font: 600 10px/16px "IBM Plex Sans", sans-serif;
+  letter-spacing: 0.04em;
+  vertical-align: 1px;
+}
+
+.ls-ex-bse {
+  background: #FFF1D6;
+  color: #8A5A00;
+}
+
+.ls-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border, #E4E7EC);
+}
+
+.ls-timeline-row > td {
+  background: #F8FAFC;
+  padding-top: 8px;
+  padding-bottom: 12px;
+}
+
+.ls-timeline-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #667085;
+  margin-bottom: 6px;
+}
+
+.ls-timeline {
+  background: transparent;
+  font-size: 12.5px;
+}
+
+.ls-timeline th {
+  font-size: 11px;
+  font-weight: 600;
+  color: #667085;
+}
+
+.ls-timeline > :not(caption) > * > * {
+  background: transparent;
+}
+
+.ls-exit-btn {
+  white-space: nowrap;
+}
+
+.ls-exit-btn:hover:not(:disabled) {
+  border-color: #E03131;
+  color: #E03131;
+}
+
 .pf-alert.pf-alert-bad {
   background: var(--red-bg);
   color: var(--red-text);

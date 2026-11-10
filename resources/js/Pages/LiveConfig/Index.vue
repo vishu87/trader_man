@@ -15,6 +15,8 @@ const errors    = ref({});
 const m         = ref({});
 const saved     = ref(null);          // what is stored now (for the confirm-live check)
 const webhookUrl  = ref(null);
+const webhookUrlKey = ref(null);
+const copiedKey = ref(false);
 const brokerReady = ref(false);
 const copied    = ref(false);
 
@@ -25,9 +27,12 @@ const YESNO   = [{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }];
 
 function toForm(c) {
     return {
-        enabled: c.enabled ? 'on' : 'off', mode: c.mode, alert_names: c.alert_names.join(', '), max_alert_age_minutes: c.max_alert_age_minutes,
+        enabled: c.enabled ? 'on' : 'off', mode: c.mode, alert_names: c.alert_names.join(', '), max_alert_age_minutes: c.max_alert_age_minutes, signal_valid_minutes: c.signal_valid_minutes,
+        q_max_day_chg: c.quality.max_day_chg, q_max_from_low: c.quality.max_from_low, q_max_vwap_dist: c.quality.max_vwap_dist, q_min_rsi: c.quality.min_rsi, q_max_rsi: c.quality.max_rsi,
+        q_min_vol_ratio: c.quality.min_vol_ratio, q_daily_uptrend: c.quality.daily_uptrend ? 'yes' : 'no', q_d_green_min: c.quality.d_green_min, q_d_green_days: c.quality.d_green_days,
+        q_max_chg_5d: c.quality.max_chg_5d, q_max_daily_rsi: c.quality.max_daily_rsi, q_max_chg_1m: c.quality.max_chg_1m,
         first_amount: c.first_amount, add_amount: c.add_amount, max_adds: c.max_adds, add_drop_pct: c.add_drop_pct, entry_from: c.entry_from, entry_until: c.entry_until,
-        hold_days: c.hold_days, exit_time: c.exit_time, target_pct: c.target_pct ?? '', stop_pct: c.stop_pct ?? '',
+        hold_days: c.hold_days ?? '', exit_time: c.exit_time, target_pct: c.target_pct ?? '', stop_pct: c.stop_pct ?? '',
         min_price: c.min_price, min_turnover_cr: c.min_turnover / 10000000, liquidity_days: c.liquidity_days, exclude_etf: c.exclude_etf ? 'yes' : 'no',
         order_type: c.order_type, limit_buffer_pct: c.limit_buffer_pct, exit_buffer_pct: c.exit_buffer_pct, entry_timeout_minutes: c.entry_timeout_minutes, exit_timeout_minutes: c.exit_timeout_minutes,
         max_open_positions: c.max_open_positions, max_capital_total: c.max_capital_total, max_new_capital_per_day: c.max_new_capital_per_day,
@@ -36,7 +41,11 @@ function toForm(c) {
 
 function toConfig(f) {
     return {
-        enabled: f.enabled === 'on', mode: f.mode, alert_names: f.alert_names, max_alert_age_minutes: f.max_alert_age_minutes,
+        enabled: f.enabled === 'on', mode: f.mode, alert_names: f.alert_names, max_alert_age_minutes: f.max_alert_age_minutes, signal_valid_minutes: f.signal_valid_minutes,
+        quality: {
+            max_day_chg: f.q_max_day_chg, max_from_low: f.q_max_from_low, max_vwap_dist: f.q_max_vwap_dist, min_rsi: f.q_min_rsi, max_rsi: f.q_max_rsi, min_vol_ratio: f.q_min_vol_ratio,
+            daily_uptrend: f.q_daily_uptrend === 'yes', d_green_min: f.q_d_green_min, d_green_days: f.q_d_green_days, max_chg_5d: f.q_max_chg_5d, max_daily_rsi: f.q_max_daily_rsi, max_chg_1m: f.q_max_chg_1m,
+        },
         first_amount: f.first_amount, add_amount: f.add_amount, max_adds: f.max_adds, add_drop_pct: f.add_drop_pct, entry_from: f.entry_from, entry_until: f.entry_until,
         hold_days: f.hold_days, exit_time: f.exit_time, target_pct: f.target_pct, stop_pct: f.stop_pct,
         min_price: f.min_price, min_turnover: (Number(f.min_turnover_cr) || 0) * 10000000, liquidity_days: f.liquidity_days, exclude_etf: f.exclude_etf === 'yes',
@@ -51,6 +60,7 @@ function load() {
         saved.value = data.config;
         m.value = toForm(data.config);
         webhookUrl.value = data.webhook_url;
+        webhookUrlKey.value = data.webhook_url_key;
         brokerReady.value = data.broker_ready;
         loaded.value = true;
     });
@@ -87,9 +97,13 @@ const submit = handleSubmit(() => {
     });
 });
 
-function copyUrl() {
-    if (!webhookUrl.value) return;
-    navigator.clipboard.writeText(webhookUrl.value).then(() => { copied.value = true; setTimeout(() => copied.value = false, 1500); });
+function copyUrl(which) {
+    const url = which === 'key' ? webhookUrlKey.value : webhookUrl.value;
+    if (!url) return;
+    navigator.clipboard.writeText(url).then(() => {
+        const r = which === 'key' ? copiedKey : copied;
+        r.value = true; setTimeout(() => r.value = false, 1500);
+    });
 }
 </script>
 
@@ -118,10 +132,12 @@ function copyUrl() {
                     <div class="row g-3">
                         <FormSelect label="Trading" name="enabled" cls="col-6" v-model="m.enabled" :options="ONOFF" select_name="Choose" :req="true" />
                         <FormSelect label="Mode" name="mode" cls="col-6" v-model="m.mode" :options="MODES" select_name="Choose" :req="true" />
-                        <FormInput label="Alert names that trade" name="alert_names" cls="col-8" v-model="m.alert_names" placeholder="RISH5-1, …" :req="true" />
-                        <FormInput label="Ignore alerts older than (min)" name="max_alert_age_minutes" type="number" cls="col-4" v-model="m.max_alert_age_minutes" :req="true" />
+                        <FormInput label="Alert names that trade" name="alert_names" cls="col-12" v-model="m.alert_names" placeholder="RISH5-1, …" :req="true" />
+                        <FormInput label="Ignore alerts older than (min)" name="max_alert_age_minutes" type="number" cls="col-6" v-model="m.max_alert_age_minutes" :req="true" />
+                        <FormInput label="A waiting signal expires after (min)" name="signal_valid_minutes" type="number" cls="col-6" v-model="m.signal_valid_minutes" :req="true" />
                     </div>
-                    <div v-for="k in ['enabled', 'mode', 'alert_names', 'max_alert_age_minutes']" :key="k">
+                    <p class="lc-hint">A signal that is <em>Watch</em> (or <em>Can enter</em> but has no free slot) is checked again on every closed 5-minute candle, and dropped this long after its candle closed.</p>
+                    <div v-for="k in ['enabled', 'mode', 'alert_names', 'max_alert_age_minutes', 'signal_valid_minutes']" :key="k">
                         <div v-if="errors[k]" class="lc-err">{{ errors[k] }}</div>
                     </div>
                 </section>
@@ -147,13 +163,33 @@ function copyUrl() {
                 <section class="card-panel lc-card">
                     <h6>Selling</h6>
                     <div class="row g-3">
-                        <FormInput label="Hold for (days)" name="hold_days" type="number" cls="col-6" v-model="m.hold_days" :req="true" />
+                        <FormInput label="Hold for (days)" name="hold_days" type="number" cls="col-6" v-model="m.hold_days" placeholder="no time exit" />
                         <FormInput label="Sell from (on the last day)" name="exit_time" type="time" cls="col-6" v-model="m.exit_time" :req="true" />
                         <FormInput label="Target %" name="target_pct" type="number" cls="col-6" v-model="m.target_pct" placeholder="none" />
                         <FormInput label="Stop loss %" name="stop_pct" type="number" cls="col-6" v-model="m.stop_pct" placeholder="none" />
                     </div>
-                    <p class="lc-hint">Hold 0 = sell the same day; 1 = the next trading day (weekends skipped; there is no holiday calendar). Target and stop are measured from your <em>average</em> price and checked every minute.</p>
+                    <p class="lc-hint">For now a position is sold at the <strong>profit target</strong>, or by hand with the <strong>Exit</strong> button on the Positions tab. Leave <em>Hold for</em> and <em>Stop loss</em> empty for that. Hold 0 = sell the same day; 1 = the next trading day (weekends skipped; there is no holiday calendar). Target and stop are measured from your <em>average</em> price and checked every minute.</p>
                     <div v-for="k in ['hold_days', 'exit_time', 'target_pct', 'stop_pct']" :key="k"><div v-if="errors[k]" class="lc-err">{{ errors[k] }}</div></div>
+                </section>
+
+                <section class="card-panel lc-card">
+                    <h6>Signal check — Can enter / Watch / Skip</h6>
+                    <div class="row g-3">
+                        <FormInput label="Day move at most (%)" name="q_max_day_chg" type="number" cls="col-4" v-model="m.q_max_day_chg" :req="true" />
+                        <FormInput label="Off the day's low at most (%)" name="q_max_from_low" type="number" cls="col-4" v-model="m.q_max_from_low" :req="true" />
+                        <FormInput label="Above VWAP at most (%)" name="q_max_vwap_dist" type="number" cls="col-4" v-model="m.q_max_vwap_dist" :req="true" />
+                        <FormInput label="5-min RSI at least" name="q_min_rsi" type="number" cls="col-4" v-model="m.q_min_rsi" :req="true" />
+                        <FormInput label="5-min RSI at most" name="q_max_rsi" type="number" cls="col-4" v-model="m.q_max_rsi" :req="true" />
+                        <FormInput label="Volume at least (× average)" name="q_min_vol_ratio" type="number" cls="col-4" v-model="m.q_min_vol_ratio" :req="true" />
+                        <FormSelect label="Daily close above 20 SMA" name="q_daily_uptrend" cls="col-4" v-model="m.q_daily_uptrend" :options="YESNO" select_name="Choose" :req="true" />
+                        <FormInput label="Green daily candles at least" name="q_d_green_min" type="number" cls="col-4" v-model="m.q_d_green_min" :req="true" />
+                        <FormInput label="…of the last (days)" name="q_d_green_days" type="number" cls="col-4" v-model="m.q_d_green_days" :req="true" />
+                        <FormInput label="5-day rise at most (%)" name="q_max_chg_5d" type="number" cls="col-4" v-model="m.q_max_chg_5d" :req="true" />
+                        <FormInput label="Daily RSI at most" name="q_max_daily_rsi" type="number" cls="col-4" v-model="m.q_max_daily_rsi" :req="true" />
+                        <FormInput label="Last month rise at most (%)" name="q_max_chg_1m" type="number" cls="col-4" v-model="m.q_max_chg_1m" :req="true" />
+                    </div>
+                    <p class="lc-hint">Judged on the <em>closed</em> 5-minute candle, from Zerodha. A failed <strong>timing</strong> check (candle not green, run too far today, RSI, VWAP, volume) = <strong>Watch</strong>: checked again on every new candle. A failed <strong>daily / monthly</strong> check = <strong>Skip</strong>. All pass = <strong>Can enter</strong>, validated once more just before the buy. The daily trend needs the close above the 20 SMA <em>and</em> mostly green daily candles, so one old spike followed by red candles does not count as an uptrend.</p>
+                    <div v-for="k in ['q_max_day_chg', 'q_max_from_low', 'q_max_vwap_dist', 'q_min_rsi', 'q_max_rsi', 'q_min_vol_ratio', 'q_daily_uptrend', 'q_d_green_min', 'q_d_green_days', 'q_max_chg_5d', 'q_max_daily_rsi', 'q_max_chg_1m']" :key="k"><div v-if="errors[k]" class="lc-err">{{ errors[k] }}</div></div>
                 </section>
 
                 <section class="card-panel lc-card">
@@ -186,21 +222,27 @@ function copyUrl() {
                         <FormInput label="Most money held in total (₹)" name="max_capital_total" type="number" cls="col-6" v-model="m.max_capital_total" :req="true" />
                         <FormInput label="Most new buying a day (₹)" name="max_new_capital_per_day" type="number" cls="col-6" v-model="m.max_new_capital_per_day" :req="true" />
                     </div>
-                    <p class="lc-hint">A buy that would go over any of these is skipped, and the Live Signals page says which limit.</p>
+                    <p class="lc-hint">A <em>Can enter</em> signal that would go over any of these waits (it is validated again, then bought, when there is room), and the Live Signals page says which limit.</p>
                     <div v-for="k in ['max_open_positions', 'max_capital_total', 'max_new_capital_per_day']" :key="k"><div v-if="errors[k]" class="lc-err">{{ errors[k] }}</div></div>
                 </section>
             </div>
 
             <section class="card-panel lc-card mt-3">
                 <h6>ChartInk webhook</h6>
-                <template v-if="webhookUrl">
-                    <p class="lc-hint" style="margin-top:0">In your ChartInk alert, tick “Send webhook” and use this URL. Anyone who has it can send alerts, so keep it private.</p>
+                <p class="lc-hint" style="margin-top:0">In your ChartInk alert, tick “Send webhook” and use this URL. Stocks are looked up on NSE first, then BSE.</p>
+                <div class="d-flex gap-2">
+                    <input class="form-control form-control-sm mono" :value="webhookUrl" readonly @focus="$event.target.select()" />
+                    <button type="button" class="btn-secondary-sm" @click="copyUrl('plain')"><i class="bi" :class="copied ? 'bi-check2' : 'bi-clipboard'"></i> {{ copied ? 'Copied' : 'Copy' }}</button>
+                </div>
+                <p class="lc-hint">This URL is open: it works in <strong>Dry run</strong>, and is refused in <strong>Live</strong> mode, because anyone who knew it could otherwise trigger real orders. For live trading give ChartInk the secret form:</p>
+                <template v-if="webhookUrlKey">
                     <div class="d-flex gap-2">
-                        <input class="form-control form-control-sm mono" :value="webhookUrl" readonly @focus="$event.target.select()" />
-                        <button type="button" class="btn-secondary-sm" @click="copyUrl"><i class="bi" :class="copied ? 'bi-check2' : 'bi-clipboard'"></i> {{ copied ? 'Copied' : 'Copy' }}</button>
+                        <input class="form-control form-control-sm mono" :value="webhookUrlKey" readonly @focus="$event.target.select()" />
+                        <button type="button" class="btn-secondary-sm" @click="copyUrl('key')"><i class="bi" :class="copiedKey ? 'bi-check2' : 'bi-clipboard'"></i> {{ copiedKey ? 'Copied' : 'Copy' }}</button>
                     </div>
+                    <p class="lc-hint" style="margin-top:6px">Keep that one private.</p>
                 </template>
-                <p v-else class="lc-err" style="margin:0">No webhook secret is set. Add <span class="mono">CHARTINK_WEBHOOK_SECRET=…</span> to .env; until then the webhook refuses every call.</p>
+                <p v-else class="lc-err" style="margin:0">No webhook secret is set. Add <span class="mono">CHARTINK_WEBHOOK_SECRET=…</span> to .env; until then live mode refuses every call.</p>
                 <p class="lc-hint">Zerodha token for today: <span class="status-chip" :class="brokerReady ? 'chip-green' : 'chip-amber'">{{ brokerReady ? 'found' : 'not found yet' }}</span>
                     — prices and orders need it. The once-a-minute check is <span class="mono">php artisan live:tick</span>, run by the scheduler cron.</p>
             </section>

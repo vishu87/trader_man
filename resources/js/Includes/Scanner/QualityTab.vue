@@ -71,7 +71,7 @@ function valueOf(code, r) {
         rsi_lo:   `RSI ${n(f.rsi)}`,
         volume:   `${n(f.vol_ratio, 2)}× the last 20 candles`,
         window:   `candle ${f.at}`,
-        d_trend:  `${sgn(c.d_vs_sma20, 2)} vs daily 20 SMA`,
+        d_trend:  `${sgn(c.d_vs_sma20, 2)} vs daily 20 SMA · ${(c.d_green || []).slice(-params.value.d_green_days).filter(Boolean).length} of the last ${Math.min(params.value.d_green_days, (c.d_green || []).length)} daily candles green`,
         d_chg5:   `${sgn(c.d_chg5, 2)} in 5 days`,
         d_rsi:    `daily RSI ${n(c.d_rsi)}`,
         m_chg1:   `${sgn(c.m_chg1, 2)} last month`,
@@ -110,7 +110,9 @@ function openChart(r) {
             </fieldset>
             <fieldset class="sc-group">
                 <legend>Context (daily / monthly)</legend>
-                <label class="sc-check sc-field"><input v-model="params.daily_uptrend" type="checkbox" /> Daily close above 20 SMA</label>
+                <label class="sc-check sc-field"><input v-model="params.daily_uptrend" type="checkbox" /> Daily close above 20 SMA, with green candles</label>
+                <label class="sc-field" title="A stock above its 20 SMA only because of one old spike, now falling in red candles, is not an uptrend"><span>Green daily candles ≥</span><input v-model.number="params.d_green_min" type="number" step="1" class="form-control form-control-sm" /></label>
+                <label class="sc-field"><span>…of the last (days)</span><input v-model.number="params.d_green_days" type="number" step="1" class="form-control form-control-sm" /></label>
                 <label class="sc-field"><span>5-day rise ≤ %</span><input v-model.number="params.max_chg_5d" type="number" step="1" class="form-control form-control-sm" /></label>
                 <label class="sc-field"><span>Daily RSI ≤</span><input v-model.number="params.max_daily_rsi" type="number" step="1" class="form-control form-control-sm" /></label>
                 <label class="sc-field"><span>Last month rise ≤ %</span><input v-model.number="params.max_chg_1m" type="number" step="5" class="form-control form-control-sm" /></label>

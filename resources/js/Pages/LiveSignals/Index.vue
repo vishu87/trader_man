@@ -26,11 +26,17 @@ function ts(s) {
     return s.slice(0, 10) === today ? s.slice(11, 19) : fmtDate(s).slice(0, 6) + ' ' + s.slice(11, 16);
 }
 
-const SIGNAL_CHIP   = { new: 'chip-amber', working: 'chip-amber', done: 'chip-green', skipped: 'chip-neutral', failed: 'chip-red' };
+// where a signal stands (status) and how it was rated (verdict)
+const SIGNAL_CHIP   = { new: 'chip-amber', working: 'chip-amber', watching: 'chip-amber', enter: 'chip-green', done: 'chip-green', skipped: 'chip-neutral', ignored: 'chip-neutral', expired: 'chip-neutral', failed: 'chip-red' };
+const SIGNAL_LABEL  = { new: 'waiting for its candle', working: 'checking…', watching: 'watching', enter: 'can enter · waiting for room', done: 'bought', skipped: 'skipped', ignored: 'ignored', expired: 'expired', failed: 'failed' };
+const VERDICT       = { enter: ['chip-green', 'Can enter'], watch: ['chip-amber', 'Watch'], skip: ['chip-red', 'Skip'], nodata: ['chip-neutral', 'No data'] };
+const FILTERS       = [['all', 'All'], ['waiting', 'Waiting'], ['bought', 'Bought'], ['skipped', 'Skipped'], ['ignored', 'Ignored'], ['ended', 'Expired / failed']];
+const GROUP         = { new: 'waiting', working: 'waiting', watching: 'waiting', enter: 'waiting', done: 'bought', skipped: 'skipped', ignored: 'ignored', expired: 'ended', failed: 'ended' };
 const POSITION_CHIP = { pending: 'chip-amber', open: 'chip-green', closed: 'chip-neutral', cancelled: 'chip-neutral', failed: 'chip-red' };
 const ORDER_CHIP    = { sending: 'chip-amber', open: 'chip-amber', complete: 'chip-green', rejected: 'chip-red', cancelled: 'chip-neutral', unknown: 'chip-red' };
-const EXIT_CHIP     = { stop: 'chip-red', target: 'chip-green', time_exit: 'chip-neutral' };
-const EXIT_LABEL    = { stop: 'stop loss', target: 'target', time_exit: 'time exit' };
+const EXIT_CHIP     = { stop: 'chip-red', target: 'chip-green', time_exit: 'chip-neutral', manual: 'chip-amber' };
+const EXIT_LABEL    = { stop: 'stop loss', target: 'target', time_exit: 'time exit', manual: 'sold by hand' };
+const FAIL_LABEL    = { green: 'not green', day_chg: 'up too much', from_low: 'far off the low', vwap: 'VWAP', rsi_hi: 'RSI high', rsi_lo: 'RSI low', volume: 'low volume', window: 'time', d_trend: 'daily trend', d_chg5: '5-day run', d_rsi: 'daily RSI', m_chg1: 'month run', drift: 'price ran' };
 
 function loadOverview() {
     return DBService.postData('/api/live/overview', {}).then((d) => { if (d.success) overview.value = d; });
@@ -38,7 +44,7 @@ function loadOverview() {
 
 function loadTab() {
     const t = tab.value;
-    if (t === 'signals')   return DBService.postData('/api/live/signals', {}).then((d) => { if (d.success) signals.value = d.signals; });
+    if (t === 'signals')   return DBService.postData('/api/live/signals', {}).then((d) => { if (d.success) { signals.value = d.signals; Object.keys(timeline.value).forEach((id) => loadChecks(id)); } });
     if (t === 'positions') return DBService.postData('/api/live/positions', {}).then((d) => { if (d.success) positions.value = d; });
     return DBService.postData('/api/live/orders', {}).then((d) => { if (d.success) orders.value = d.orders; });
 }
@@ -47,6 +53,35 @@ function loadTab() {
 const chart = ref({ show: false, symbol: '', date: '' });
 function openChart(symbol, date) {
     chart.value = { show: true, symbol, date: (date || '').slice(0, 10) || (overview.value ? overview.value.now.slice(0, 10) : '') };
+}
+
+// signal list: filter, and the status-over-time of one signal
+const filter = ref('all');
+const shown = computed(() => filter.value === 'all' ? signals.value : signals.value.filter((s) => GROUP[s.status] === filter.value));
+const countOf = (f) => f === 'all' ? signals.value.length : signals.value.filter((s) => GROUP[s.status] === f).length;
+
+const timeline = ref({});     // signal id -> checks (open rows)
+function loadChecks(id) {
+    return DBService.postData('/api/live/signal-checks', { id }).then((d) => { if (d.success) timeline.value = { ...timeline.value, [id]: d.checks }; });
+}
+function toggleChecks(s) {
+    if (timeline.value[s.id]) { const t = { ...timeline.value }; delete t[s.id]; timeline.value = t; return; }
+    loadChecks(s.id);
+}
+const failText = (c) => c.fails.map((f) => FAIL_LABEL[f] || f).join(', ');
+
+// the Exit button
+const exiting = ref(null);
+function exitPosition(p) {
+    const what = p.status === 'pending' ? 'Cancel the buy order for ' + p.symbol + '?' : 'Sell all ' + fmtNum(p.qty) + ' shares of ' + p.symbol + ' now?';
+    const real = p.mode === 'live' ? '\n\nThis sends a REAL order to Zerodha.' : '\n\n(Dry run: simulated, nothing is sent to Zerodha.)';
+    if (!confirm(what + real)) return;
+    exiting.value = p.id;
+    DBService.postData('/api/live/positions/exit', { id: p.id }).then((d) => {
+        exiting.value = null;
+        banner.value = { ok: d.success, bad: !d.success, message: typeof d.message === 'string' ? d.message : 'Could not exit' };
+        refresh();
+    });
 }
 
 function refresh() { return Promise.all([loadOverview(), loadTab()]); }
@@ -78,6 +113,8 @@ const tickAge = computed(() => {
 });
 const tickText = computed(() => tickAge.value === null ? 'never' : (tickAge.value < 90 ? tickAge.value + ' s ago' : Math.round(tickAge.value / 60) + ' min ago'));
 const today = (k) => overview.value && overview.value.signals_today[k] ? overview.value.signals_today[k] : 0;
+const todayAll = computed(() => overview.value ? Object.values(overview.value.signals_today).reduce((a, b) => a + Number(b), 0) : 0);
+const todayWaiting = computed(() => today('new') + today('working') + today('watching') + today('enter'));
 </script>
 
 <template>
@@ -102,7 +139,7 @@ const today = (k) => overview.value && overview.value.signals_today[k] ? overvie
 
         <template v-else>
             <div v-if="overview.attention.length" class="ls-attn"><div v-for="(a, i) in overview.attention" :key="i"><i class="bi bi-exclamation-triangle-fill me-1"></i> {{ a }}</div></div>
-            <div v-if="!overview.webhook_ready" class="ls-attn"><div><i class="bi bi-exclamation-triangle-fill me-1"></i> The webhook has no secret yet, so ChartInk alerts are refused. Set CHARTINK_WEBHOOK_SECRET in .env (see Live Config).</div></div>
+            <div v-if="!overview.webhook_ready" class="ls-attn"><div><i class="bi bi-exclamation-triangle-fill me-1"></i> Live mode needs a webhook secret, so ChartInk alerts are refused. Set CHARTINK_WEBHOOK_SECRET in .env (see Live Config).</div></div>
 
             <div class="pf-summary">
                 <div class="pf-stat">
@@ -116,7 +153,7 @@ const today = (k) => overview.value && overview.value.signals_today[k] ? overvie
                 <div class="pf-stat">
                     <div class="pf-stat-label">Open positions</div>
                     <div class="pf-stat-value">{{ overview.open_positions }}</div>
-                    <div class="pf-stat-sub">{{ overview.pending_positions ? overview.pending_positions + ' waiting to fill · ' : '' }}₹{{ fmtNum(overview.capital_held) }} held</div>
+                    <div class="pf-stat-sub">{{ overview.open_slots }} of {{ overview.max_positions }} slots free · {{ overview.pending_positions ? overview.pending_positions + ' waiting to fill · ' : '' }}₹{{ fmtNum(overview.capital_held) }} held</div>
                 </div>
                 <div class="pf-stat">
                     <div class="pf-stat-label">Unrealised</div>
@@ -130,8 +167,8 @@ const today = (k) => overview.value && overview.value.signals_today[k] ? overvie
                 </div>
                 <div class="pf-stat">
                     <div class="pf-stat-label">Alerts today</div>
-                    <div class="pf-stat-value">{{ today('done') + today('skipped') + today('failed') + today('new') + today('working') }}</div>
-                    <div class="pf-stat-sub">{{ today('done') }} traded · {{ today('skipped') }} skipped<template v-if="today('failed')"> · <span class="pnl-neg">{{ today('failed') }} failed</span></template></div>
+                    <div class="pf-stat-value">{{ todayAll }}</div>
+                    <div class="pf-stat-sub">{{ today('done') }} bought · {{ todayWaiting }} waiting · {{ today('skipped') }} skipped · {{ today('ignored') }} ignored<template v-if="today('failed')"> · <span class="pnl-neg">{{ today('failed') }} failed</span></template></div>
                 </div>
                 <div class="pf-stat">
                     <div class="pf-stat-label">Last check</div>
@@ -148,41 +185,77 @@ const today = (k) => overview.value && overview.value.signals_today[k] ? overvie
                 </div>
 
                 <!-- ── signals ── -->
-                <div v-if="tab === 'signals'" class="table-responsive">
+                <div v-if="tab === 'signals'">
+                    <div class="ls-filters">
+                        <button v-for="f in FILTERS" :key="f[0]" class="pf-tab" :class="{ active: filter === f[0] }" style="padding:4px 10px" @click="filter = f[0]">{{ f[1] }} <span class="pf-tab-count">{{ countOf(f[0]) }}</span></button>
+                    </div>
+                    <div class="table-responsive">
                     <table class="table table-hover align-middle mb-0">
-                        <thead><tr><th>Received</th><th>Stock</th><th>Alert</th><th class="text-end">Alert price</th><th>What happened</th><th>Why</th></tr></thead>
+                        <thead><tr><th style="width:28px"></th><th>Received</th><th>Stock</th><th>Alert</th><th class="text-end">Alert price</th><th>Rated</th><th>Status</th><th>Why</th></tr></thead>
                         <tbody>
-                            <tr v-if="!signals.length"><td colspan="6" class="text-center py-5 text-muted">No alerts yet. When ChartInk calls the webhook they appear here within a second.</td></tr>
-                            <tr v-for="s in signals" :key="s.id">
-                                <td class="text-nowrap mono">{{ ts(s.received_at) }}<div class="cell-secondary" style="margin:0" title="The time ChartInk gave the alert">fired {{ s.triggered_at.slice(11, 16) }}</div></td>
-                                <td class="cell-primary mono">{{ s.symbol }}<button class="ls-chart-btn" title="View the chart of the day" @click="openChart(s.symbol, s.triggered_at)"><i class="bi bi-graph-up"></i></button></td>
-                                <td class="text-muted">{{ s.alert_name }}</td>
-                                <td class="text-num">{{ s.trigger_price ? fmtPrice(s.trigger_price) : '—' }}</td>
-                                <td>
-                                    <span class="status-chip" :class="SIGNAL_CHIP[s.status]">{{ s.status === 'done' ? (s.action === 'average' ? 'averaged' : 'bought') : s.status }}</span>
-                                </td>
-                                <td class="ls-reason">{{ s.reason || '' }}</td>
-                            </tr>
+                            <tr v-if="!shown.length"><td colspan="8" class="text-center py-5 text-muted">{{ signals.length ? 'No signals in this group.' : 'No alerts yet. When ChartInk calls the webhook they appear here within a second.' }}</td></tr>
+                            <template v-for="s in shown" :key="s.id">
+                                <tr>
+                                    <td class="p-0 ps-2"><button v-if="s.checks" class="tbl-icon-btn" :title="timeline[s.id] ? 'Hide how its status changed' : 'Show how its status changed over time'" @click="toggleChecks(s)"><i class="bi" :class="timeline[s.id] ? 'bi-chevron-down' : 'bi-chevron-right'"></i></button></td>
+                                    <td class="text-nowrap mono">{{ ts(s.received_at) }}<div class="cell-secondary" style="margin:0" title="The time ChartInk gave the alert">fired {{ s.triggered_at.slice(11, 16) }}</div></td>
+                                    <td class="cell-primary mono">{{ s.symbol }}<span class="ls-ex" :class="{ 'ls-ex-bse': s.exchange === 'BSE' }" :title="s.exchange === 'BSE' ? 'Not listed on NSE: traded on BSE' : 'Traded on NSE'">{{ s.exchange }}</span><button class="ls-chart-btn" title="View the chart of the day" @click="openChart(s.symbol, s.triggered_at)"><i class="bi bi-graph-up"></i></button>
+                                        <div v-if="s.sector || s.market_cap" class="cell-secondary" style="margin:0">{{ [s.sector, s.market_cap].filter(Boolean).join(' · ') }}</div></td>
+                                    <td class="text-muted">{{ s.alert_name }}</td>
+                                    <td class="text-num">{{ s.trigger_price ? fmtPrice(s.trigger_price) : '—' }}<div v-if="s.alert_rsi !== null" class="cell-secondary" style="margin:0">RSI {{ fmtNum(s.alert_rsi, 1) }}</div></td>
+                                    <td>
+                                        <template v-if="s.verdict"><span class="status-chip" :class="VERDICT[s.verdict][0]">{{ VERDICT[s.verdict][1] }}</span><span v-if="s.score !== null" class="cell-secondary ms-1" style="margin:0" title="How many of the checks passed">{{ s.score }}%</span></template>
+                                        <span v-else class="text-muted">—</span>
+                                    </td>
+                                    <td><span class="status-chip" :class="SIGNAL_CHIP[s.status]">{{ SIGNAL_LABEL[s.status] || s.status }}</span></td>
+                                    <td class="ls-reason">{{ s.reason || '' }}</td>
+                                </tr>
+                                <tr v-if="timeline[s.id]" class="ls-timeline-row">
+                                    <td></td>
+                                    <td colspan="7">
+                                        <div class="ls-timeline-title">Status over time — each time the engine looked at {{ s.symbol }}</div>
+                                        <table class="table table-sm mb-0 ls-timeline">
+                                            <thead><tr><th>Looked at</th><th>Candle</th><th>Rated</th><th class="text-end">Candle close</th><th class="text-end">Live price</th><th class="text-end">RSI</th><th class="text-end">vs VWAP</th><th class="text-end">Day move</th><th>What failed</th></tr></thead>
+                                            <tbody>
+                                                <tr v-for="c in timeline[s.id]" :key="c.id">
+                                                    <td class="mono text-nowrap">{{ c.checked_at.slice(11, 19) }}<span v-if="c.kind === 'recheck'" class="status-chip chip-neutral ms-1" title="Checked again just before a buy">re-check</span></td>
+                                                    <td class="mono">{{ c.candle || '—' }}</td>
+                                                    <td><span class="status-chip" :class="VERDICT[c.verdict][0]">{{ VERDICT[c.verdict][1] }}</span></td>
+                                                    <td class="text-num">{{ c.price ? fmtPrice(c.price) : '—' }}</td>
+                                                    <td class="text-num">{{ c.ltp ? fmtPrice(c.ltp) : '—' }}</td>
+                                                    <td class="text-num">{{ c.rsi !== null ? c.rsi : '—' }}</td>
+                                                    <td class="text-num">{{ c.vwap_dist !== null ? pct(c.vwap_dist) : '—' }}</td>
+                                                    <td class="text-num">{{ c.day_chg !== null ? pct(c.day_chg) : '—' }}</td>
+                                                    <td class="ls-reason">{{ c.verdict === 'enter' ? 'all checks pass' : (c.note || failText(c)) }}</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </td>
+                                </tr>
+                            </template>
                         </tbody>
                     </table>
+                    </div>
                 </div>
 
                 <!-- ── positions ── -->
                 <div v-else-if="tab === 'positions'" class="table-responsive">
                     <table class="table table-hover align-middle mb-0">
-                        <thead><tr><th>Stock</th><th>Status</th><th class="text-end">Qty</th><th class="text-end">Avg price</th><th class="text-end">Last price</th><th class="text-end">Unrealised</th><th class="text-end">Averages</th><th>Sell on / after</th><th>Bought</th></tr></thead>
+                        <thead><tr><th>Stock</th><th>Status</th><th class="text-end">Qty</th><th class="text-end">Avg price</th><th class="text-end">Last price</th><th class="text-end">Unrealised</th><th class="text-end">Averages</th><th class="text-end">Target</th><th>Bought</th><th class="text-end">Exit</th></tr></thead>
                         <tbody>
-                            <tr v-if="!positions.open.length"><td colspan="9" class="text-center py-4 text-muted">Nothing held right now.</td></tr>
+                            <tr v-if="!positions.open.length"><td colspan="10" class="text-center py-4 text-muted">Nothing held right now.</td></tr>
                             <tr v-for="p in positions.open" :key="p.id">
-                                <td class="cell-primary mono">{{ p.symbol }}<button class="ls-chart-btn" title="View the chart of the day" @click="openChart(p.symbol, '')"><i class="bi bi-graph-up"></i></button><span v-if="p.mode === 'dry_run'" class="status-chip chip-neutral ms-2" title="Simulated: no real order">dry run</span></td>
-                                <td><span class="status-chip" :class="POSITION_CHIP[p.status]">{{ p.status === 'pending' ? 'waiting to fill' : p.status }}</span></td>
+                                <td class="cell-primary mono">{{ p.symbol }}<span class="ls-ex" :class="{ 'ls-ex-bse': p.exchange === 'BSE' }">{{ p.exchange }}</span><button class="ls-chart-btn" title="View the chart of the day" @click="openChart(p.symbol, '')"><i class="bi bi-graph-up"></i></button><span v-if="p.mode === 'dry_run'" class="status-chip chip-neutral ms-2" title="Simulated: no real order">dry run</span></td>
+                                <td><span class="status-chip" :class="POSITION_CHIP[p.status]">{{ p.status === 'pending' ? 'waiting to fill' : p.status }}</span><span v-if="p.exit_requested_at" class="status-chip chip-amber ms-1" title="You asked to close it: the sell is being placed / retried every minute">exit requested</span></td>
                                 <td class="text-num">{{ p.qty ? fmtNum(p.qty) : '—' }}</td>
                                 <td class="text-num">{{ p.qty ? fmtPrice(p.avg_price) : '—' }}</td>
                                 <td class="text-num">{{ p.last_price ? fmtPrice(p.last_price) : '—' }}</td>
                                 <td class="text-num"><template v-if="p.unrealised !== null"><span :class="pnlClass(p.unrealised)">{{ money(p.unrealised) }}</span><div class="cell-secondary" :class="pnlClass(p.unrealised_pct)" style="margin:0">{{ pct(p.unrealised_pct) }}</div></template><span v-else class="text-muted">—</span></td>
                                 <td class="text-num">{{ p.adds }}</td>
-                                <td class="text-nowrap">{{ p.hold_until ? fmtDate(p.hold_until) : '—' }}</td>
+                                <td class="text-num"><template v-if="p.target_price"><span class="pnl-pos">{{ fmtPrice(p.target_price) }}</span></template><span v-else class="text-muted">—</span>
+                                    <div v-if="p.stop_price || p.hold_until" class="cell-secondary" style="margin:0"><template v-if="p.stop_price">stop {{ fmtPrice(p.stop_price) }}</template><template v-if="p.stop_price && p.hold_until"> · </template><template v-if="p.hold_until">sell {{ fmtDate(p.hold_until) }}</template></div></td>
                                 <td class="text-nowrap mono">{{ ts(p.opened_at || p.created_at) }}</td>
+                                <td class="text-end"><button class="btn-secondary-sm ls-exit-btn" :disabled="exiting === p.id" :title="p.status === 'pending' ? 'Cancel the buy order' : 'Sell everything now'" @click="exitPosition(p)">
+                                    <span v-if="exiting === p.id" class="spinner-border spinner-border-sm"></span><i v-else class="bi bi-box-arrow-right"></i> {{ p.status === 'pending' ? 'Cancel buy' : 'Exit' }}</button></td>
                             </tr>
                         </tbody>
                     </table>

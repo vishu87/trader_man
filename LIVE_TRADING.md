@@ -9,27 +9,30 @@ never used for live trading.
 ## 1. The short version
 
 ```
-ChartInk alert ──► POST /api/chartink/<secret>
+ChartInk alert ──► POST /api/chart-ink-alerts
                       │  stores the raw call            → raw_data_chartink
-                      │  one row per stock              → live_signals   (status "new")
+                      │  one row per stock (+ sector, market cap, RSI, close) → live_signals   (status "new")
                       └─ starts  php artisan live:process-signals  in the background
                                    │
                                    ▼
-                  SignalProcessor: checks → buys the 1st lot            → live_positions + live_orders
-                                   │
+        SignalProcessor:  ignore? ─► wait for the 5-min candle to CLOSE ─► classify (SignalClassifier, Zerodha candles)
+                                   │        Can enter ─► re-validate ─► buy the 1st lot   → live_positions + live_orders
+                                   │        Watch     ─► re-checked on every closed candle until Can enter / expired
+                                   │        Skip      ─► final
         every minute (cron) ──►  live:tick   (LiveTick)
-                                   ├─ processes any signal still waiting (safety net)
+                                   ├─ keeps working the waiting signals (Watch, and Can enter that had no room)
                                    ├─ asks the broker how every open order stands → fills update the position
                                    ├─ cancels buys / sells that did not fill in time
-                                   ├─ exits:  stop · target · time exit  → sell order
+                                   ├─ exits:  manual (Exit button) · target · (stop · time exit, off by default) → sell order
                                    └─ extra buys:  5-min 20 SMA, then every x % lower
 ```
 
-* **1st buy** — after the alert's 5-minute candle has **closed**, and only if it closed **green** (close > open). We trade on closed candles only.
+* **Classification** — every signal is rated **Can enter / Watch / Skip** on its *closed* 5-minute candle with the same twelve checks as the Scanner's *Signal quality* tab (section 4).
+* **1st buy** — only for a *Can enter* signal, validated once more just before the order. We trade on closed candles only.
 * **2nd buy** — when the price falls to the **5-minute 20 SMA**.
 * **3rd and 4th buy** — each time the price is **x % under the last buy** (default 3 %).
 * **Every extra buy** — only while the price is **below the day's VWAP**.
-* **Sell** — stop loss, target, or the time exit (default: next trading day from 15:15).
+* **Sell** — for now by **profit target** (default 10 % over the average) or **by hand** with the *Exit* button on the Positions tab. A stop loss and a time exit exist but are **off** (empty) by default.
 
 Defaults are safe: **Trading = Off** and **Mode = Dry run** (real prices, simulated orders). Nothing real is ever sent until
 you change both.
@@ -95,34 +98,57 @@ Sidebar group: **Live Trading** → Live Signals, Live Config.
 **URL**
 
 ```
-POST  https://<your-site>/api/chartink/<CHARTINK_WEBHOOK_SECRET>
+POST  https://<your-site>/api/chart-ink-alerts                 ← the URL ChartInk is given
+POST  https://<your-site>/api/chart-ink-alerts?key=<secret>    ← same, with the secret (needed in LIVE mode)
+POST  https://<your-site>/api/chartink/<secret>                ← the older form, still works
 ```
 
-(`GET` and any other method also work.) The full URL, with the secret, is shown on the Live Config page. The secret is the
+(`GET` and any other method also work.) Both forms are shown on the Live Config page. The secret is the
 `CHARTINK_WEBHOOK_SECRET` line in `.env`.
 
 | Situation | Answer |
 |---|---|
-| Wrong secret | `404 Not found` — nothing is stored |
-| `CHARTINK_WEBHOOK_SECRET` not set | `503` |
-| Correct secret | `200 OK` (the alert is stored first, processing happens afterwards) |
+| `/api/chart-ink-alerts`, no key, mode **Dry run** | `200 OK` (open URL: it can only ever cause simulated orders) |
+| `/api/chart-ink-alerts`, no key, mode **Live** | `403` — real orders are never placed because of a call anyone could make. Use the `?key=` URL in ChartInk |
+| Wrong key / wrong secret | `404 Not found` — nothing is stored |
+| Key given but `CHARTINK_WEBHOOK_SECRET` not set | `503` |
+| Correct key | `200 OK` (the alert is stored first, processing happens afterwards) |
 
-**Fields read from the call** (form-encoded or JSON — same as the older futures app):
+**Sample call** (form-encoded or JSON):
+
+```json
+{
+  "stocks": "INFY,TCS,HDFCBANK",
+  "trigger_prices": "2500.00,600.00,3400.00",
+  "triggered_at": "2:47 pm",
+  "scan_name": "Copy - Copy - Rish5-1",
+  "scan_url": "copy-copy-rish5-1-694",
+  "alert_name": "RISH5-1",
+  "webhook_url": "https://trade.avyaytech.in/api/chart-ink-alerts",
+  "columns": [
+    {"symbol": "INFY", "sector": "IT", "marketcapname": "Large Cap", "rsi": 61.2, "close": 2501.5},
+    {"symbol": "TCS", "sector": "IT", "marketcapname": "Large Cap", "rsi": 55, "close": 600.1},
+    {"symbol": "HDFCBANK", "sector": "Banks", "marketcapname": "Large Cap", "rsi": 48.9, "close": 3400}
+  ]
+}
+```
 
 | Field | Example | Use |
 |---|---|---|
-| `stocks` | `RELIANCE,SBIN` | comma-separated symbols — one signal each |
-| `trigger_prices` | `1500.5,800` | price of each stock at the alert (same order) |
-| `triggered_at` | `9:18 am` | time it fired; today's date is assumed. Missing or in the future → "now" |
+| `stocks` | `INFY,TCS` | comma-separated symbols — one signal each |
+| `trigger_prices` | `2500.00,600.00` | price of each stock at the alert (same order) |
+| `triggered_at` | `2:47 pm` | time it fired; today's date is assumed. Missing or in the future → "now" |
 | `alert_name` | `RISH5-1` | which alert it is (must be enabled in Live Config) |
-| `scan_name` | | kept in the raw record only |
+| `scan_name` | | stored on each signal |
+| `columns[]` | `sector`, `marketcapname`, `rsi`, `close` | one object per stock. Matched to the stock by the `symbol` inside it, otherwise by position — never a column that names a different stock. Stored on the signal and shown in the list. A value that is not a number is stored as empty. |
+| `scan_url`, `webhook_url` | | kept in the raw record only |
 
 **What is stored**
 
 1. `raw_data_chartink` — the call exactly as received (JSON), the sender's IP and the time received. Always written, even for
    alerts that will be ignored.
-2. `live_signals` — one row per stock. A symbol must look like `A–Z 0–9 & - . _` (≤ 50 characters) and the call must have an
-   `alert_name`, otherwise that stock is ignored.
+2. `live_signals` — one row per stock. A symbol must look like `A–Z 0–9 & - . _` (≤ 50 characters, no spaces — so placeholder text
+   such as `SYMBOL 1, SYMBOL 2` is ignored) and the call must have an `alert_name`, otherwise that stock is ignored.
    * **Idempotent:** a unique key on *alert name + symbol + fired-at time* means a repeated delivery of the same alert creates
      no second signal.
    * Stored as **skipped** straight away (with the reason) when the alert name is not in the enabled list, or when it is older
@@ -138,36 +164,88 @@ found under `/Applications/MAMP/bin/php`.
 
 ## 4. What happens to a signal
 
-**Closed candles only.** An alert is not acted on while the 5-minute candle it fired in is still forming (an alert at 10:43 belongs
-to the 10:40 candle and is acted on from 10:45:03). It waits as `new`; with Trading Off it is skipped at once. If the broker has
-not published that candle within 3 minutes of its close, the signal is skipped (`the alert candle … is not available`).
-The webhook's background process (`live:process-signals`) waits for the close and acts within seconds; if it has just
-finished when an alert arrives, the once-a-minute tick picks it up (at most about a minute late). Only one such process runs at a time
-(a lock file in `storage/framework/live_process.lock`).
+```
+new ──► ignored                       the stock is already held / an entry order is placed / an earlier signal for it is still waiting
+ │
+ └─(its 5-min candle closed)─► classify ─┬─► Skip ──────────────► skipped
+                                         ├─► Watch ─────────────► watching ──(each new closed candle: classify again)──► …
+                                         └─► Can enter ─ no room ► enter (waiting for room) ─ re-validate ─► bought
+                                                         room ───► re-validate ───────────────────────────► bought (done)
+ watching / enter that run out of time ► expired        trading off ► skipped (but the verdict is kept and shown)
+```
 
-`SignalProcessor` takes each ready `new` signal, claims it (`new → working`, so two processes can never handle the same one), and
-decides. The first rule that fails skips the signal with a visible reason.
+**Closed candles only.** A signal is not judged while the 5-minute candle it fired in is still forming (an alert at 10:43 belongs
+to the 10:40 candle and is judged from 10:45:03). If the broker has not published that candle within 3 minutes of its close, the
+signal is skipped (`the … candle is not available from the broker`). The webhook's background process (`live:process-signals`) waits
+for the close and acts within seconds; after that the once-a-minute tick keeps the waiting signals going (at most about a minute
+late). Only one such process runs at a time (a lock file in `storage/framework/live_process.lock`).
 
-| # | Check | Skip reason shown |
+**Ignored** (decided at once, before the candle closes): a signal for a stock that already has an open or pending position
+(`already in the trade — extra buys follow the price`, or `an entry order for this stock is already placed`), or while an *earlier*
+signal for the same stock is still waiting (`signal #12 for this stock is already waiting for its entry`). An ignored signal is never
+judged or bought. A signal whose earlier sibling was *skipped* is not ignored — it is judged on its own.
+
+**Stock not found.** The stock is looked up on **NSE first, then BSE** (the instrument lists are fetched once a day). A BSE-only
+stock is judged and traded on BSE (prices, candles, orders and the position all use BSE; the list shows an `NSE` / `BSE` tag).
+Listed on neither → `skipped: not found on NSE or BSE`. If the lists cannot be read at all, NSE is assumed — a lookup failure never
+blocks a trade.
+
+**The verdict** — `SignalClassifier` (the Scanner's `SignalQuality` checks, on Zerodha's candles, using only closed candles):
+
+| Group | Check | Fails → |
 |---|---|---|
-| 1 | Trading is On | `trading is switched off` |
-| 2 | Alert name is in the enabled list | `alert "X" is not enabled` |
-| 3 | Weekday, and time inside the buying window (default 09:15–15:15) | `outside the buying window (…)` |
-| 4 | Already holding this stock? | `already in the trade (extra buys follow the price, not new alerts)` |
-| 5 | The alert's candle has closed **green** (close > open), read from the broker's 5-minute candles | `the 10:40 candle did not close green (open ₹x, close ₹y)` |
-| 5b | Broker has a live price | `no live price from the broker` |
-| 6 | Not an ETF / fund (name contains ETF, BEES or FUND; symbol ends BEES/ETF) | `ETF / fund` |
-| 7 | Price ≥ minimum price (default ₹20) | `price ₹x is under the minimum` |
-| 8 | Liquidity: average daily turnover over the last 20 sessions ≥ ₹1 crore (needs ≥ 5 sessions of history) | `illiquid: average ₹x cr a day` |
-| 9 | Limits: max open positions, max money held, max new money per day | `limit: …` |
-| 10 | One lot (₹ first buy ÷ price) is at least 1 share | `price ₹x is above the ₹ first buy` |
+| timing (5-min candle) | closed green · not up too much today · not too far off the day's low · above VWAP but not stretched · 5-min RSI not overbought · RSI has strength · volume picking up · inside the entry window | **Watch** |
+| context (daily / monthly) | **daily uptrend: close above the 20 SMA *and* at least 3 of the last 5 daily candles green** · not up too much in 5 days · daily RSI not overbought · not up too much last month | **Skip** |
+| all pass | | **Can enter** |
+| drift guard | the live price is already more than 1 % above the close of the candle judged | **Watch** (`price ₹x is already y % above the 10:00 close`) |
+
+*Why the green-candle rule:* a close above the daily 20 SMA can come from one old spike; if the stock has been sliding in red daily
+candles since, it is not an uptrend. The two numbers (3 of 5) are in Live Config → *Signal check*; 0 switches the rule off.
+
+**Watch** is re-judged on **every new closed 5-minute candle** (once per candle, never twice on the same one). The first candle
+on which everything passes makes it *Can enter*.
+
+**Can enter** goes through the buying checks below, and **is validated again right before the order** (fresh candles and live
+price — a *re-check* row in the history). If something changed (for example the price ran 3 % while it waited) it goes back to
+*Watch* and nothing is bought.
+
+**No room** — when the open positions or money limits are full, a *Can enter* signal **waits** (status `enter`, reason `limit: already
+5 open positions — waiting for room`). When room appears (a position is sold, by hand or by target) it is validated again and bought.
+It is checked again only when something can have changed (a new candle, or room appearing), not on every cycle.
+
+**Expiry** — a *Watch* / *Can enter* signal that is still waiting `signal_valid_minutes` (default 60) after its candle closed, or when the buying
+window ends (default 15:15), becomes `expired` (`not bought: …` with the last reason).
+
+**Trading Off** — signals are still judged (so you can watch the verdicts), but nothing is queued or bought: the signal ends as
+`skipped` — `trading is switched off — it was rated: enter` (the verdict stays on the row).
+
+**Status over time.** Every look at a signal is saved (`live_signal_checks`): when, which candle, the verdict, the candle close
+and live price, RSI, distance from VWAP, day move, and what failed. Open a row with the arrow on the Signals tab to see how the status
+changed over time.
+
+**Buying checks** (when a signal is *Can enter*; the first one that fails ends it with a visible reason):
+
+| # | Check | Result shown |
+|---|---|---|
+| 1 | Alert name is in the enabled list | `alert "X" is not enabled` |
+| 2 | Weekday, and time inside the buying window (default 09:15–15:15) — for a new signal | `outside the buying window (…)` |
+| 3 | Not already held | `ignored` |
+| 4 | Listed on NSE or BSE | `not found on NSE or BSE` |
+| 5 | Classified Can enter (and re-validated) | `Watch` / `Skip` as above |
+| 6 | Broker has a live price | `no live price from the broker` |
+| 7 | Not an ETF / fund (name contains ETF, BEES or FUND; symbol ends BEES/ETF) | `ETF / fund` |
+| 8 | Price ≥ minimum price (default ₹20) | `price ₹x is under the minimum` |
+| 9 | Liquidity: average daily turnover over the last 20 sessions ≥ ₹1 crore (needs ≥ 5 sessions of history) | `illiquid: average ₹x cr a day` |
+| 10 | Limits: max open positions, max money held, max new money per day | **waits** (`… — waiting for room`) |
+| 11 | One lot (₹ first buy ÷ price) is at least 1 share | `price ₹x is above the ₹ first buy` |
 
 If everything passes: a position is created (`pending`), a **buy order** is sent, and the signal becomes `done` (action
 `entry`). A broker refusal makes the signal `failed` with the broker's message.
 
 A repeated alert for a stock already held **never buys anything** — extra buys are driven by price, not alerts (section 6).
 
-Signal statuses: `new` → `working` → `done` / `skipped` / `failed`.
+Signal statuses: `new` → `working` (being looked at) → `watching` / `enter` (waiting) → `done` / `skipped` / `ignored` / `expired` / `failed`.
+A `working` signal that has been stuck for 5 minutes (a crash) is marked `failed — interrupted`, never retried (a real order might have gone out).
 
 ---
 
@@ -220,24 +298,38 @@ Details:
 
 ## 7. Exits (every minute)
 
+**Right now exits are by profit target or by hand.** The stop loss and the time exit are still in the engine but **off** by default
+(*Stop loss %* and *Hold for (days)* empty in Live Config).
+
 For each open position, using the live price:
 
 | Exit | When | Order |
 |---|---|---|
-| **Stop** | price ≤ average × (1 − stop %) (default 10 %) | sell all |
+| **Manual** | the **Exit** button was pressed on the Positions tab | sell all (kind `manual`) |
 | **Target** | price ≥ average × (1 + target %) (default 10 %) | sell all |
-| **Time exit** | today ≥ `hold_until` **and** time ≥ exit time (default 15:15) | sell all |
+| Stop | price ≤ average × (1 − stop %) — only if a stop % is set | sell all |
+| Time exit | today ≥ `hold_until` **and** time ≥ exit time — only if *Hold for* is set | sell all |
 
-Order of checking is stop → target → time. Rules:
+Order of checking is manual → stop → target → time. Rules:
 * Exits run **even when Trading is Off** — switching off never leaves a position unwatched.
 * If a sell is already working, no second one is placed.
 * If the broker refuses the sell 3 times in 15 minutes, retries stop and the position shows an attention warning
   ("sell it by hand").
-* Stop and target are placed as ordinary sell orders when the price is seen (checked once a minute) — **not** as GTT orders at
-  Zerodha, so a fast move inside a minute can fill worse than the stop/target price.
+* Target (and stop) are placed as ordinary sell orders when the price is seen (checked once a minute) — **not** as GTT orders at
+  Zerodha, so a fast move inside a minute can fill worse than the target price.
 
-Hold days: `0` = sell the same day; `1` = next trading day, etc. Only Mon–Fri are counted (**no holiday calendar** — on a holiday
-the broker simply has no prices).
+**The Exit button** (Positions tab; asks for confirmation, and says whether the order is real or a dry run):
+1. the position is marked *exit requested*;
+2. buy orders still waiting at the broker are cancelled (a position that was only a *waiting buy* is simply cancelled — "Cancel buy" —
+   nothing is sold);
+3. everything held is sold, as a limit `exit_buffer_pct` below the live price (or market, per *Order type*);
+4. if the sell is refused, or the broker cannot give a price right now, the position **stays marked** and the once-a-minute check keeps
+   trying (an unfilled sell is cancelled after `exit_timeout_minutes` and re-sent). A position being exited gets **no extra buys**.
+A position opened in Dry run is never sold through the live broker, and the reverse: the button and the minute check refuse it and
+say why (so switching the mode can never send a real sell for a simulated position).
+
+Hold days: empty = no time exit; `0` = sell the same day; `1` = next trading day, etc. Only Mon–Fri are counted (**no holiday
+calendar** — on a holiday the broker simply has no prices).
 
 ---
 
@@ -320,15 +412,16 @@ the field); reading is tolerant (anything missing falls back to the default).
 | Mode (`mode`) | Dry run | `dry_run` or `live` |
 | Alert names (`alert_names`) | `RISH5-1` | only these alerts trade |
 | Ignore alerts older than (`max_alert_age_minutes`) | 5 | 1–30 |
+| A waiting signal expires after (`signal_valid_minutes`) | 60 | 5–240, minutes after its candle closed |
 | First buy (`first_amount`) | ₹10,000 | ₹500 – ₹10,00,000 |
 | Average with (`add_amount`) | ₹10,000 | per extra buy, 0 = never average |
 | Max extra buys (`max_adds`) | 3 | 0–20 |
 | Then every … % lower (`add_drop_pct`) | 3 | 0.1–50, % under the last buy for the 3rd+ buys |
 | Buy from / until (`entry_from`, `entry_until`) | 09:15 / 15:15 | buying window (from ≥ 09:15, until ≤ 15:25) |
-| Hold for (days) (`hold_days`) | 1 | 0–10 trading days |
+| Hold for (days) (`hold_days`) | empty (no time exit) | empty, or 0–10 trading days |
 | Sell from (`exit_time`) | 15:15 | on the exit day (09:30–15:25) |
 | Target % (`target_pct`) | 10 | empty = none; 0.1–100 |
-| Stop loss % (`stop_pct`) | 10 | empty = none; 0.1–50 |
+| Stop loss % (`stop_pct`) | empty (no stop) | empty = none; 0.1–50 |
 | Minimum price (`min_price`) | ₹20 | |
 | Minimum turnover (`min_turnover`) | ₹1 crore | average ₹ traded per day |
 | Over … sessions (`liquidity_days`) | 20 | 5–100 |
@@ -338,25 +431,42 @@ the field); reading is tolerant (anything missing falls back to the default).
 | Sell limit below price (`exit_buffer_pct`) | 1 % | 0–10 |
 | Cancel an unfilled buy after (`entry_timeout_minutes`) | 10 | 1–60 |
 | Cancel an unfilled sell after (`exit_timeout_minutes`) | 3 | 1–60 |
-| Max open positions | 10 | |
+| Max open positions | 10 | a *Can enter* signal with no room waits for one |
+| Signal check (`quality`) | see below | the thresholds that make a signal Can enter / Watch / Skip |
 | Max money held in total | ₹2,00,000 | counts filled money plus buys still waiting |
 | Max new money per day | ₹1,00,000 | all buys placed today |
 
+**Signal check thresholds** (`quality`, Live Config → *Signal check*; the entry window is the *Buy from / until* above):
+
+| Setting | Default | Fails → |
+|---|---|---|
+| Day move at most (`max_day_chg`) | 8 % | Watch |
+| Off the day's low at most (`max_from_low`) | 6 % | Watch |
+| Above VWAP at most (`max_vwap_dist`) — must also be above VWAP | 3 % | Watch |
+| 5-min RSI at least / at most (`min_rsi`, `max_rsi`) | 45 / 75 | Watch |
+| Volume at least × the average of the 20 candles before (`min_vol_ratio`) | 1.0 | Watch |
+| Daily close above 20 SMA (`daily_uptrend`) | Yes | Skip |
+| Green daily candles at least … of the last … days (`d_green_min`, `d_green_days`) | 3 of 5 | Skip |
+| 5-day rise at most (`max_chg_5d`) | 15 % | Skip |
+| Daily RSI at most (`max_daily_rsi`) | 80 | Skip |
+| Last month rise at most (`max_chg_1m`) | 60 % | Skip |
+
 Cross-checks on save: first buy ≤ both money limits; "sell the same day" (hold 0) needs the buying window to end before the exit
-time; averaging with ₹ > 0 needs max extra buys ≥ 1.
+time; averaging with ₹ > 0 needs max extra buys ≥ 1; green days needed cannot exceed the days looked at.
 
 ---
 
 ## 12. Database tables
 
-(DDL is in `database_migration.php`; migrations `2026_11_11_000001/2`.)
+(DDL is in `database_migration.php`; migrations `2026_11_11_000001/2` and `2026_11_12_000001`.)
 
 | Table | One row is | Key columns |
 |---|---|---|
 | `raw_data_chartink` | one webhook call | `alert_name`, `raw_data` (JSON as received), `ip`, `received_at` |
-| `live_signals` | one stock in one alert | `alert_name`, `symbol`, `trigger_price`, `triggered_at`, `received_at`, `status` (new/working/done/skipped/failed), `action` (entry/average), `reason`, `position_id`. Unique: alert + symbol + triggered_at |
-| `live_positions` | one trade in one stock | `mode`, `status` (pending/open/closed/cancelled/failed), `qty`, `avg_price`, `invested`, `adds`, `sold_qty`, `exit_value`, `exit_price`, `exit_reason` (stop/target/time_exit), `pnl`, `hold_until`, `last_price`, `opened_at`, `closed_at` |
-| `live_orders` | one order | `position_id`, `signal_id`, `side`, `kind` (entry/average/stop/target/time_exit), `qty`, `order_type`, `price`, `status` (sending/open/complete/rejected/cancelled/unknown), `filled_qty`, `filled_price`, `broker_order_id`, `mode`, `message` |
+| `live_signals` | one stock in one alert | `alert_name`, `scan_name`, `exchange` (NSE/BSE), `symbol`, `trigger_price`, `sector`, `market_cap`, `alert_rsi`, `alert_close`, `triggered_at`, `received_at`, `status` (new/working/watching/enter/done/skipped/ignored/expired/failed), `verdict` (enter/watch/skip/nodata: the latest), `score`, `checked_candle`, `checked_at`, `checks`, `action` (entry/average), `reason`, `position_id`. Unique: alert + symbol + triggered_at |
+| `live_signal_checks` | one look at a signal | `signal_id`, `checked_at`, `candle_at`, `kind` (candle / recheck), `verdict`, `score`, `price` (candle close), `ltp`, `fails` (codes), `note`, `details` (JSON: RSI, VWAP distance, day move …) |
+| `live_positions` | one trade in one stock | `mode`, `status` (pending/open/closed/cancelled/failed), `qty`, `avg_price`, `invested`, `adds`, `sold_qty`, `exit_value`, `exit_price`, `exit_reason` (manual/stop/target/time_exit), `exit_requested_at` (the Exit button), `pnl`, `hold_until`, `last_price`, `opened_at`, `closed_at` |
+| `live_orders` | one order | `position_id`, `signal_id`, `side`, `kind` (entry/average/manual/stop/target/time_exit), `qty`, `order_type`, `price`, `status` (sending/open/complete/rejected/cancelled/unknown), `filled_qty`, `filled_price`, `broker_order_id`, `mode`, `message` |
 | `app_settings` | key/value | `live_config` (the settings above), `live_last_tick` |
 
 ---
@@ -364,7 +474,8 @@ time; averaging with ₹ > 0 needs max extra buys ≥ 1.
 ## 13. API used by the pages
 
 All `POST`, authenticated with the `apiToken` header like the rest of the app:
-`/api/live/overview`, `/signals`, `/positions`, `/orders`, `/tick` (runs one tick now), `/config`, `/config/save`.
+`/api/live/overview`, `/signals`, `/signal-checks` (one signal's status over time), `/positions`, `/positions/exit` (the Exit button), `/orders`, `/chart`,
+`/tick` (runs one tick now), `/config`, `/config/save`.
 
 ---
 
@@ -374,12 +485,14 @@ All `POST`, authenticated with the `apiToken` header like the rest of the app:
 |---|---|
 | `app/Http/Controllers/LiveWebhookController.php` | the public webhook |
 | `app/Services/Live/ChartinkWebhook.php` | store raw call, create signals |
-| `app/Services/Live/SignalProcessor.php` | checks, first buy, extra-buy rule, sending orders |
+| `app/Services/Live/SignalProcessor.php` | the signal states (ignore / classify / watch / queue / expire), the first buy, the extra-buy rule, sending orders |
+| `app/Services/Live/SignalClassifier.php` | rates a signal Can enter / Watch / Skip on Zerodha's candles; writes `live_signal_checks` |
+| `app/Services/Scanner/SignalQuality.php` | the twelve checks themselves (shared with the Scanner's Signal quality tab) |
 | `app/Services/Live/OrderSync.php` | broker order status → fills → positions |
-| `app/Services/Live/LiveTick.php` | the once-a-minute job |
+| `app/Services/Live/LiveTick.php` | the once-a-minute job, exits, the manual exit |
 | `app/Services/Live/LiveConfig.php` | settings, defaults, strict validation |
 | `app/Services/Live/Brokers/Broker.php` | what the engine needs from a broker (interface) |
-| `app/Services/Live/Brokers/KiteBroker.php` | real Zerodha orders + market data |
+| `app/Services/Live/Brokers/KiteBroker.php` | real Zerodha orders + market data; NSE-then-BSE lookup |
 | `app/Services/Live/Brokers/DryRunBroker.php` | same market data, simulated orders |
 | `app/Services/Live/BrokerFactory.php` | picks the broker from the saved mode (only `live` returns the real one) |
 | `app/Services/Live/Runner.php` | starts the background process |
@@ -396,8 +509,14 @@ All `POST`, authenticated with the `apiToken` header like the rest of the app:
 averaging rule above, stop/target/time exits including weekends, refused sells, crash recovery); the exact parameters sent to Kite
 (with a fake Kite client); that dry run can never call `placeOrder`; the pages and the webhook in a real browser/HTTP.
 
-**Not tested:** real order placement on Zerodha (no real order has ever been sent), the real ChartInk payload (assumed identical
-to the older futures app), behaviour on a live market day.
+Also tested with the fake broker and in a browser: the sample payload and its `columns`, the three webhook URL forms, every signal
+state (Can enter / Watch → Can enter on a later candle / Skip / ignored / expired / waiting for room, then re-validated), the Exit
+button (sold, refused then retried, unfilled then re-sent, a waiting buy cancelled, wrong mode refused), NSE-then-BSE lookup and a BSE order,
+and the green-candle daily trend.
+
+**Not tested:** real order placement on Zerodha (no real order has ever been sent), the real ChartInk payload (the sample you
+gave has placeholder values, e.g. numbers in `columns`), the NSE/BSE instrument lists from the real Kite API (a fake client was
+used), the classification on a live market day with real candles.
 
 **Known limits:** no holiday calendar; stop/target checked once a minute and sold with ordinary orders (no GTT); no handling of
 corporate actions on held shares; a position closed by hand at Zerodha is not noticed (the engine would try to sell shares that
