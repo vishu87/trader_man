@@ -6,16 +6,17 @@ namespace App\Services\StockScanner;
  * Monthly chart: the first close above the upper Bollinger band after a long quiet spell, on the highest RSI and heavy volume.
  * (The user's hand-marked RBA chart.)
  *
- *   R = the reference candle: the current month, or up to 5 months back.
+ *   R = the reference candle: the current month, or up to 5 months back. The best-scoring month is the one judged.
  *
- *   1  R is green and closed ABOVE its upper Bollinger band (20, 2)
- *   2  for the 8 months before R, no candle closed above its upper band (they were all under it)
- *   3  R's RSI(9) is the highest of all the earlier months AND of the months after it (if any) — within the RSI flexibility
- *   4  RSI(9)'s 3-month average crossed above its 21-month average in the 6 months up to R, and is above it on R
- *   5  R's volume is at least [volume multiple] x the average of the 20 months before it
+ *   1  (25 pts) R is green and closed ABOVE its upper Bollinger band (20, 2)
+ *   2  (20 pts) for the 8 months before R, no candle closed above its upper band (they were all under it)
+ *   3  (20 pts) R's RSI(9) is the highest of all the earlier months AND of the months after it (if any) — within the RSI flexibility
+ *   4  (20 pts) RSI(9)'s 3-month average crossed above its 21-month average in the 6 months up to R, and is above it on R
+ *   5  (15 pts) R's volume is at least [volume multiple] x the average of the 20 months before it
  *
- * Fixed rules, except two the user wanted some give in: the RSI flexibility (points) and the volume multiple.
- * Pure — takes the monthly candles, returns the verdict and the numbers behind it.
+ * Not pass / fail: every rule earns partial credit for a near miss (see each rule's detail), and the points add up to a 0-100 SCORE.
+ * Every rule fully met = 100. The page shows the symbols at or above a minimum score (80 by default).
+ * Settings: the volume multiple and the RSI flexibility (points). Pure — takes the monthly candles, returns the score and the numbers behind it.
  */
 class MonthlyBollingerBreakout
 {
@@ -47,13 +48,13 @@ class MonthlyBollingerBreakout
             'name' => self::NAME,
             'chart' => 'Monthly',
             'min_months' => self::MIN_MONTHS,
-            'summary' => 'The first monthly close above the upper Bollinger band after months spent under it — on the highest RSI(9) and heavy volume. That candle becomes the reference candle.',
+            'summary' => 'The first monthly close above the upper Bollinger band after months spent under it — on the highest RSI(9) and heavy volume. That candle becomes the reference candle. Each symbol gets a score out of 100; near misses keep part of the points.',
             'rules' => [
-                'The reference candle is green and closed above its upper Bollinger band (20, 2). It is the current month, or up to ' . self::MAX_AGE . ' months back',
-                'For the ' . self::QUIET_MONTHS . ' months before it, no candle closed above the upper band',
-                'Its RSI(9) is the highest of all the earlier months, and of the months after it (if any)',
-                'RSI(9)\'s 3-month average crossed above its 21-month average within the ' . self::CROSS_WINDOW . ' months up to it, and is above it on that candle',
-                'Its volume is above the average of the previous ' . self::VOL_LOOKBACK . ' months by the volume multiple',
+                '25 points — The reference candle is green and closed above its upper Bollinger band (20, 2). It is the current month, or up to ' . self::MAX_AGE . ' months back. (Above the band: most of the points; green: the rest. Closing up to 3% under the band keeps a little.)',
+                '20 points — For the ' . self::QUIET_MONTHS . ' months before it, no candle closed above the upper band. (Each month that did costs ' . (20 / self::QUIET_MONTHS) . ' points.)',
+                '20 points — Its RSI(9) is the highest of all the earlier months, and of the months after it (if any). (Within the RSI flexibility = full points; every point below that costs 2, so 10 points short = none.)',
+                '20 points — RSI(9)\'s 3-month average crossed above its 21-month average within the ' . self::CROSS_WINDOW . ' months up to it and is above it on that candle. (Above it but crossed earlier: 12 points; crossed in the window but now below: 5.)',
+                '15 points — Its volume is above the average of the previous ' . self::VOL_LOOKBACK . ' months by the volume multiple. (Scales from 1× the average = none up to the multiple = full.)',
             ],
             'params' => [
                 ['key' => 'volume_x', 'label' => 'Volume at least', 'suffix' => '× the 20-month average', 'default' => self::DEFAULT_VOLUME_X, 'min' => 0.5, 'max' => 20, 'step' => 0.1],
@@ -64,7 +65,7 @@ class MonthlyBollingerBreakout
 
     /**
      * @param array $rows monthly candles, oldest first: [['date','open','high','low','close','volume','bb_high'], ...]; the last may be the month in progress
-     * @return array{status: string, passed: int, total: int, checks: array, facts: ?array, message?: string}
+     * @return array{status: string, score: ?int, passed: int, total: int, checks: array, facts: ?array, message?: string}  status 'scored' (score 0-100) or 'no_data'
      */
     public static function evaluate(array $rows, array $params = []): array
     {
@@ -73,7 +74,7 @@ class MonthlyBollingerBreakout
         $n = count($rows);
         $L = $n - 1;
         if ($n < self::MIN_MONTHS) {
-            return ['status' => 'no_data', 'passed' => 0, 'total' => 0, 'checks' => [], 'facts' => null, 'message' => 'Needs at least ' . self::MIN_MONTHS . ' months of candles (this has ' . $n . ')'];
+            return ['status' => 'no_data', 'score' => null, 'passed' => 0, 'total' => 0, 'checks' => [], 'facts' => null, 'message' => 'Needs at least ' . self::MIN_MONTHS . ' months of candles (this has ' . $n . ')'];
         }
 
         $rsi  = self::rsiSeries(array_column($rows, 'close'), self::RSI_PERIOD);
@@ -85,14 +86,13 @@ class MonthlyBollingerBreakout
             $r = $L - $age;
             if ($r < self::QUIET_MONTHS || $ma21[$r] === null || ($rows[$r]['bb_high'] ?? null) === null) continue;
             $res = self::check($rows, $r, $L, $rsi, $ma3, $ma21, $p);
-            if ($best === null || $res['passed'] > $best['passed']) $best = $res;   // ties keep the most recent candidate
-            if ($res['passed'] === $res['total']) { $best = $res; break; }
+            if ($best === null || $res['score'] > $best['score']) $best = $res;   // ties keep the most recent candidate
         }
         if ($best === null) {
-            return ['status' => 'no_data', 'passed' => 0, 'total' => 0, 'checks' => [], 'facts' => null, 'message' => 'Not enough monthly history (with Bollinger bands and RSI) to judge the last ' . (self::MAX_AGE + 1) . ' months'];
+            return ['status' => 'no_data', 'score' => null, 'passed' => 0, 'total' => 0, 'checks' => [], 'facts' => null, 'message' => 'Not enough monthly history (with Bollinger bands and RSI) to judge the last ' . (self::MAX_AGE + 1) . ' months'];
         }
 
-        $best['status'] = $best['passed'] === $best['total'] ? 'match' : 'no_match';
+        $best['status'] = 'scored';
         return $best;
     }
 
@@ -102,56 +102,67 @@ class MonthlyBollingerBreakout
         $open = (float) $R['open']; $close = (float) $R['close']; $band = (float) $R['bb_high'];
         $f = fn ($v, $d = 2) => number_format((float) $v, $d, '.', '');
 
-        // 1 — green, and closed above its upper band
-        $c1 = $close > $open && $close > $band;
+        $pts = [];   // rule => [points earned, points possible]
+
+        // 1 — green, and closed above its upper band (25): above the band 70 %, green 30 %; closing up to 3 % under the band keeps part of the band share
+        $green = $close > $open;
         $aboveBand = $band > 0 ? ($close / $band - 1) * 100 : 0;
-        $d1 = ($close > $open ? 'green' : 'not green') . ', close ' . $f($close) . ' vs upper band ' . $f($band) . ' (' . ($aboveBand >= 0 ? '+' : '') . $f($aboveBand, 1) . '%)';
+        if ($close > $band) $bandCredit = 1.0;
+        else { $gap = -$aboveBand; $bandCredit = $gap <= 3 ? 0.5 * (1 - $gap / 3) : 0.0; }
+        $pts[1] = [25 * (0.7 * $bandCredit + 0.3 * ($green ? 1 : 0)), 25];
+        $d1 = ($green ? 'green' : 'not green') . ', close ' . $f($close) . ' vs upper band ' . $f($band) . ' (' . ($aboveBand >= 0 ? '+' : '') . $f($aboveBand, 1) . '%)';
 
-        // 2 — the 8 months before: none closed above its upper band
-        $over = null;
+        // 2 — the 8 months before: none closed above its upper band (20): each month that did costs 2.5
+        $overMonths = [];
         for ($i = $r - self::QUIET_MONTHS; $i < $r; $i++) {
-            if ($rows[$i]['bb_high'] !== null && (float) $rows[$i]['close'] > (float) $rows[$i]['bb_high']) $over = $rows[$i]['date'];
+            if ($rows[$i]['bb_high'] !== null && (float) $rows[$i]['close'] > (float) $rows[$i]['bb_high']) $overMonths[] = self::month($rows[$i]['date']);
         }
-        $c2 = $over === null;
-        $d2 = $c2 ? 'all ' . self::QUIET_MONTHS . ' months before closed under the band' : 'closed above the band in ' . self::month($over);
+        $pts[2] = [20 * (self::QUIET_MONTHS - count($overMonths)) / self::QUIET_MONTHS, 20];
+        $d2 = $overMonths ? count($overMonths) . ' of the ' . self::QUIET_MONTHS . ' months closed above the band (' . implode(', ', $overMonths) . ')' : 'all ' . self::QUIET_MONTHS . ' months before closed under the band';
 
-        // 3 — highest RSI(9) of the earlier months and of the months after it
+        // 3 — highest RSI(9) of the earlier and later months (20): within the flexibility = full, then 2 points lost per RSI point short, none at 10 short
         $others = [];
         foreach ($rsi as $i => $v) if ($v !== null && $i !== $r) $others[$i] = $v;
         $maxOther = $others ? max($others) : null;
         $maxAt = $maxOther !== null ? array_search($maxOther, $others, true) : null;
         $rsiR = $rsi[$r];
-        $c3 = $rsiR !== null && ($maxOther === null || $rsiR >= $maxOther - $p['rsi_flex']);
+        $short = ($rsiR === null) ? 10.0 : ($maxOther === null ? 0.0 : max(0.0, $maxOther - $p['rsi_flex'] - $rsiR));
+        $pts[3] = [20 * max(0.0, 1 - $short / 10), 20];
         $d3 = 'RSI ' . $f($rsiR, 1) . ($maxOther !== null ? ' vs the highest of the other months ' . $f($maxOther, 1) . ' (' . self::month($rows[$maxAt]['date']) . ')' : '') . ($p['rsi_flex'] > 0 ? ', flexibility ' . $f($p['rsi_flex'], 1) : '');
 
-        // 4 — RSI 3-month average crossed above the 21-month average within the 6 months up to R, and is above it on R
+        // 4 — RSI 3-month average crossed above the 21-month average within the 6 months up to R, and is above it on R (20)
         $cross = null;
         for ($k = max(1, $r - self::CROSS_WINDOW); $k <= $r; $k++) {
             if ($ma3[$k] !== null && $ma21[$k] !== null && $ma3[$k - 1] !== null && $ma21[$k - 1] !== null && $ma3[$k - 1] <= $ma21[$k - 1] && $ma3[$k] > $ma21[$k]) $cross = $k;
         }
         $above = $ma3[$r] !== null && $ma21[$r] !== null && $ma3[$r] > $ma21[$r];
-        $c4 = $cross !== null && $above;
+        $pts[4] = [20 * ($above ? ($cross !== null ? 1.0 : 0.6) : ($cross !== null ? 0.25 : 0.0)), 20];
         $d4 = ($cross !== null ? 'crossed above in ' . self::month($rows[$cross]['date']) : 'no cross above in the last ' . self::CROSS_WINDOW . ' months') . '; on the reference candle average(3) ' . ($ma3[$r] !== null ? $f($ma3[$r], 1) : '—') . ' vs average(21) ' . ($ma21[$r] !== null ? $f($ma21[$r], 1) : '—');
 
-        // 5 — volume against the 20 months before
+        // 5 — volume against the 20 months before (15): 1x the average = none, the volume multiple = full
         $vols = [];
         for ($i = max(0, $r - self::VOL_LOOKBACK); $i < $r; $i++) $vols[] = (float) $rows[$i]['volume'];
         $avg = $vols ? array_sum($vols) / count($vols) : 0;
         $volX = $avg > 0 ? (float) $R['volume'] / $avg : 0;
-        $c5 = $volX >= $p['volume_x'];
-        $d5 = $f($volX, 1) . '× the ' . count($vols) . '-month average (needs ≥ ' . $f($p['volume_x'], 1) . '×)';
+        $need = $p['volume_x'];
+        $lo = $need > 1 ? 1.0 : 0.0;
+        $pts[5] = [15 * ($volX >= $need ? 1.0 : max(0.0, ($volX - $lo) / ($need - $lo))), 15];
+        $d5 = $f($volX, 1) . '× the ' . count($vols) . '-month average (needs ≥ ' . $f($need, 1) . '×)';
 
-        $checks = [
-            ['rule' => 'Green candle closed above the upper Bollinger band', 'ok' => $c1, 'detail' => $d1],
-            ['rule' => 'The ' . self::QUIET_MONTHS . ' months before were all under the band', 'ok' => $c2, 'detail' => $d2],
-            ['rule' => 'Highest RSI(9) of the earlier and later months', 'ok' => $c3, 'detail' => $d3],
-            ['rule' => 'RSI average(3) crossed above average(21)', 'ok' => $c4, 'detail' => $d4],
-            ['rule' => 'High volume', 'ok' => $c5, 'detail' => $d5],
-        ];
+        $names = [1 => 'Green candle closed above the upper Bollinger band', 2 => 'The ' . self::QUIET_MONTHS . ' months before were all under the band',
+                  3 => 'Highest RSI(9) of the earlier and later months', 4 => 'RSI average(3) crossed above average(21)', 5 => 'High volume'];
+        $details = [1 => $d1, 2 => $d2, 3 => $d3, 4 => $d4, 5 => $d5];
+        $checks = []; $total = 0.0;
+        foreach ($pts as $i => [$got, $max]) {
+            $total += $got;
+            $checks[] = ['rule' => $names[$i], 'ok' => $got >= $max - 1e-9, 'points' => round($got, 1), 'max' => $max, 'detail' => $details[$i]];
+        }
+        $score = (int) round($total);
 
         return [
-            'passed' => count(array_filter(array_column($checks, 'ok'))), 'total' => count($checks), 'checks' => $checks,
+            'score' => $score, 'passed' => count(array_filter(array_column($checks, 'ok'))), 'total' => count($checks), 'checks' => $checks,
             'facts' => [
+                'score'          => $score,
                 'ref_month'      => self::month($R['date']),
                 'months_ago'     => $L - $r,
                 'body_pct'       => $open > 0 ? round(($close / $open - 1) * 100, 1) : null,

@@ -14,6 +14,7 @@ const listId    = ref('all');
 const running   = ref(false);
 const result    = ref(null);       // the last run: { results, scanned, no_data, no_candles, matched, ran_at, freshness }
 const search    = ref('');
+const minScore  = ref(80);         // show symbols scoring at least this (the server lists 50 and up)
 const ratingFilter = ref(0);       // 0 = any, 1–5 = at least that many stars, 'none' = not rated
 const showRules = ref(false);
 const params    = ref({});           // the scanner's own settings (volume multiple, RSI flexibility), by key
@@ -50,7 +51,7 @@ function run() {
 
 // ─── Showing the results ─────────────────────────────────────────────
 
-const sortBy  = ref('rating');
+const sortBy  = ref('score');
 const sortDir = ref('desc');
 
 function sort(col) {
@@ -62,7 +63,7 @@ const sortIcon = (col) => sortBy.value !== col ? 'bi-chevron-expand' : (sortDir.
 const rows = computed(() => {
     if (!result.value) return [];
     const q = search.value.trim().toLowerCase();
-    let list = result.value.results;
+    let list = result.value.results.filter(r => r.score >= minScore.value);
     if (q) list = list.filter(r => r.symbol.toLowerCase().includes(q) || (r.name || '').toLowerCase().includes(q) || r.lists.some(l => l.toLowerCase().includes(q)));
     if (ratingFilter.value === 'none') list = list.filter(r => !r.rating);
     else if (ratingFilter.value > 0)   list = list.filter(r => (r.rating || 0) >= ratingFilter.value);
@@ -77,6 +78,10 @@ const rows = computed(() => {
         return c ? c * dir : a.symbol.localeCompare(b.symbol);
     });
 });
+
+// how many symbols scored between the server's floor and the chosen minimum (so a high minimum does not look like "nothing found")
+const belowMin = computed(() => result.value ? result.value.results.filter(r => r.score < minScore.value).length : 0);
+const scoreChip = (n) => n >= 90 ? 'chip-green' : (n >= 80 ? 'chip-green' : (n >= 75 ? 'chip-amber' : 'chip-neutral'));
 
 // the reference month sorts by its age (a month name does not sort), shown as "Aug 2026 · 3 months ago"
 const ago = (n) => n === 0 ? 'this month' : (n === 1 ? 'last month' : n + ' months ago');
@@ -202,9 +207,14 @@ const syncedText = computed(() => fresh.value && fresh.value.last_synced ? fmtDa
             <!-- results -->
             <div v-if="result" class="card-panel mb-3">
                 <div class="d-flex align-items-center gap-2 m-3">
-                    <span class="fw-semibold">{{ result.matched }} match{{ result.matched === 1 ? '' : 'es' }}</span>
-                    <span v-if="rows.length !== result.matched" class="text-muted small">({{ rows.length }} shown)</span>
-                    <div class="ms-auto d-flex gap-2">
+                    <span class="fw-semibold">{{ result.matched - belowMin }} symbol{{ result.matched - belowMin === 1 ? '' : 's' }} scoring {{ minScore }} or more</span>
+                    <span v-if="rows.length !== result.matched - belowMin" class="text-muted small">({{ rows.length }} shown)</span>
+                    <span v-if="belowMin" class="text-muted small">· {{ belowMin }} more between {{ result.floor }} and {{ minScore - 1 }}</span>
+                    <div class="ms-auto d-flex align-items-center gap-2">
+                        <label class="d-flex align-items-center gap-2 small mb-0" title="Show symbols with a score of at least this (out of 100)">
+                            Score at least
+                            <input v-model.number="minScore" type="number" class="form-control form-control-sm mono" style="width:70px" :min="result.floor" max="100" step="5">
+                        </label>
                         <select v-model="ratingFilter" class="form-select form-select-sm" style="width:auto" title="Filter by your star rating">
                             <option :value="0">Any rating</option>
                             <option :value="5">5 stars</option>
@@ -222,6 +232,7 @@ const syncedText = computed(() => fresh.value && fresh.value.last_synced ? fmtDa
                             <tr>
                                 <th class="th-sort" :class="{ sorted: sortBy === 'rating' }" style="min-width:104px" @click="sort('rating')">Rating <i class="bi" :class="sortIcon('rating')"></i></th>
                                 <th class="th-sort" :class="{ sorted: sortBy === 'symbol' }" style="min-width:150px" @click="sort('symbol')">Symbol <i class="bi" :class="sortIcon('symbol')"></i></th>
+                                <th class="th-sort text-end" :class="{ sorted: sortBy === 'score' }" style="min-width:70px" title="Score out of 100: how well the symbol fits all the rules (partial credit for near misses)" @click="sort('score')">Score <i class="bi" :class="sortIcon('score')"></i></th>
                                 <th class="th-sort" :class="{ sorted: sortBy === 'months_ago' }" style="min-width:150px" title="The reference candle: the month that closed above the upper Bollinger band" @click="sort('months_ago')">Reference <i class="bi" :class="sortIcon('months_ago')"></i></th>
                                 <th class="th-sort text-end" :class="{ sorted: sortBy === 'body_pct' }" title="Size of the reference candle's body" @click="sort('body_pct')">Candle <i class="bi" :class="sortIcon('body_pct')"></i></th>
                                 <th class="th-sort text-end" :class="{ sorted: sortBy === 'above_band_pct' }" title="How far its close was above the upper band" @click="sort('above_band_pct')">Above band <i class="bi" :class="sortIcon('above_band_pct')"></i></th>
@@ -235,7 +246,7 @@ const syncedText = computed(() => fresh.value && fresh.value.last_synced ? fmtDa
                         </thead>
                         <tbody>
                             <tr v-if="!rows.length">
-                                <td colspan="10" class="text-center py-5 text-muted">{{ result.matched ? 'No results match the filters' : 'No symbol in the watchlist fits this pattern right now' }}</td>
+                                <td colspan="11" class="text-center py-5 text-muted">{{ belowMin && !rows.length && result.matched === belowMin ? 'No symbol scores ' + minScore + ' or more — lower the score to see the ' + belowMin + ' that scored ' + result.floor + '+' : (result.matched ? 'No results match the filters' : 'No symbol in the watchlist scores ' + result.floor + ' or more right now') }}</td>
                             </tr>
                             <tr v-for="r in rows" :key="r.exchange + r.symbol">
                                 <td class="text-nowrap"><StarRating :model-value="r.rating" @rate="(n) => rate(r, n)" /></td>
@@ -244,6 +255,7 @@ const syncedText = computed(() => fresh.value && fresh.value.last_synced ? fmtDa
                                     <div v-if="r.name" class="cell-secondary">{{ r.name }}</div>
                                     <div v-if="r.exchange !== 'NSE'" class="cell-secondary mono text-primary">{{ r.exchange }}</div>
                                 </td>
+                                <td class="text-end"><span class="status-chip" :class="scoreChip(r.score)">{{ r.score }}</span></td>
                                 <td class="text-nowrap" style="font-size:13px">{{ r.ref_month }} <span class="text-muted">· {{ ago(r.months_ago) }}</span></td>
                                 <td class="text-num">+{{ r.body_pct }}%</td>
                                 <td class="text-num">+{{ r.above_band_pct }}%</td>
@@ -271,7 +283,7 @@ const syncedText = computed(() => fresh.value && fresh.value.last_synced ? fmtDa
                         <button class="btn-secondary-sm" type="submit" :disabled="checking || !checkSymbol.trim()">
                             <span v-if="checking" class="spinner-border spinner-border-sm"></span><i v-else class="bi bi-search"></i> Check
                         </button>
-                        <span class="text-muted small">Shows each rule, passed or not, for one symbol (it must be in a watchlist with its candles synced).</span>
+                        <span class="text-muted small">Shows the points each rule earned for one symbol (it must be in a watchlist with its candles synced).</span>
                     </form>
 
                     <div v-if="checkResult" class="mt-3">
@@ -279,16 +291,16 @@ const syncedText = computed(() => fresh.value && fresh.value.last_synced ? fmtDa
                         <template v-else>
                             <div class="mb-2">
                                 <span class="mono fw-semibold">{{ checkResult.symbol }}</span>
-                                <span class="status-chip ms-2" :class="checkResult.status === 'match' ? 'chip-green' : 'chip-amber'">
-                                    {{ checkResult.status === 'match' ? 'Match' : 'No match' }} · {{ checkResult.passed }} of {{ checkResult.total }} rules
-                                </span>
+                                <span class="status-chip ms-2" :class="scoreChip(checkResult.score)">Score {{ checkResult.score }} / 100</span>
+                                <span class="text-muted small ms-2">{{ checkResult.score >= minScore ? 'shown' : 'not shown' }} at a minimum of {{ minScore }}</span>
                                 <span v-if="checkResult.facts" class="text-muted small ms-2">reference candle: {{ checkResult.facts.ref_month }}</span>
                             </div>
                             <table class="table table-sm mb-0" style="max-width:760px">
                                 <tbody>
                                     <tr v-for="(c, i) in checkResult.checks" :key="i">
-                                        <td style="width:28px"><i class="bi" :class="c.ok ? 'bi-check-circle-fill text-success' : 'bi-x-circle-fill text-danger'"></i></td>
+                                        <td style="width:28px"><i class="bi" :class="c.ok ? 'bi-check-circle-fill text-success' : (c.points > 0 ? 'bi-dash-circle-fill text-warning' : 'bi-x-circle-fill text-danger')"></i></td>
                                         <td>{{ c.rule }}</td>
+                                        <td class="text-nowrap mono text-end" style="width:70px">{{ c.points }} / {{ c.max }}</td>
                                         <td class="text-muted small">{{ c.detail }}</td>
                                     </tr>
                                 </tbody>

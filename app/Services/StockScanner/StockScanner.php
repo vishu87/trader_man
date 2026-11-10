@@ -13,6 +13,7 @@ use App\Models\WatchlistItem;
  */
 class StockScanner
 {
+    const LIST_FLOOR = 50;     // scores below this are not even listed (the page filters from there up: 75 / 80 / …)
     const HISTORY_YEARS = 5;   // monthly candles loaded per symbol (the RSI comparison looks at every earlier month)
 
     /** The scanners on offer. Add a class with describe() / evaluate() and list it here. */
@@ -69,7 +70,7 @@ class StockScanner
     }
 
     /**
-     * @return array{results: array, scanned: int, no_data: int, no_candles: int, matched: int}
+     * @return array{results: array, scanned: int, no_data: int, no_candles: int, matched: int, floor: int}  results = symbols scoring at least LIST_FLOOR
      */
     public static function run(string $scannerClass, $watchlistId = 'all', array $params = []): array
     {
@@ -81,7 +82,7 @@ class StockScanner
             if (empty($monthly[$k])) { $noCandles++; continue; }
             $r = $scannerClass::evaluate($monthly[$k], $params);
             if ($r['status'] === 'no_data') { $noData++; continue; }
-            if ($r['status'] !== 'match') continue;
+            if ($r['score'] < self::LIST_FLOOR) continue;
             $results[] = ['exchange' => $u['exchange'], 'symbol' => $u['symbol'], 'name' => $u['name'], 'lists' => array_values(array_unique($u['lists'])), 'rating' => $u['rating']] + $r['facts'];
         }
 
@@ -93,14 +94,14 @@ class StockScanner
         }
         unset($m);
 
-        return ['results' => $results, 'scanned' => count($universe), 'no_data' => $noData, 'no_candles' => $noCandles, 'matched' => count($results), 'params' => $params];
+        return ['results' => $results, 'scanned' => count($universe), 'no_data' => $noData, 'no_candles' => $noCandles, 'matched' => count($results), 'floor' => self::LIST_FLOOR, 'params' => $params];
     }
 
     /** One symbol's full check list (why it is, or is not, in the results). */
     public static function check(string $scannerClass, string $exchange, string $symbol, array $params = []): array
     {
         $rows = self::monthly([['exchange' => $exchange, 'symbol' => $symbol]])[$exchange . ':' . $symbol] ?? [];
-        if (!$rows) return ['status' => 'no_data', 'passed' => 0, 'total' => 0, 'checks' => [], 'facts' => null, 'message' => "No monthly candles stored for {$exchange}:{$symbol} — is it in a watchlist, and have its candles been synced?"];
+        if (!$rows) return ['status' => 'no_data', 'score' => null, 'passed' => 0, 'total' => 0, 'checks' => [], 'facts' => null, 'message' => "No monthly candles stored for {$exchange}:{$symbol} — is it in a watchlist, and have its candles been synced?"];
         return $scannerClass::evaluate($rows, $params);
     }
 
