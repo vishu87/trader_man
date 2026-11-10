@@ -235,3 +235,19 @@ html, body {
 .mono {
   font-variant-numeric: tabular-nums;
 }
+
+// ─── Profit / Loss text ──────────────────────────────────────────
+// !important: Bootstrap's `.table > * > * > *` colour rule and custom.scss tile colours would otherwise win
+.pnl-pos { color: #0E9F5B !important; font-weight: 600; }
+.pnl-neg { color: #E03131 !important; font-weight: 600; }
+
+// Tinted pill, used for P&L %
+.pnl-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  &.pnl-pos { background: var(--green-bg); }
+  &.pnl-neg { background: var(--red-bg); }
+}
+.text-num { font-variant-numeric: tabular-nums; text-align: right; }

@@ -145,3 +145,31 @@ html, body {
 .mono {
   font-variant-numeric: tabular-nums;
 }
+
+.pnl-pos {
+  color: #0E9F5B !important;
+  font-weight: 600;
+}
+
+.pnl-neg {
+  color: #E03131 !important;
+  font-weight: 600;
+}
+
+.pnl-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.pnl-badge.pnl-pos {
+  background: var(--green-bg);
+}
+.pnl-badge.pnl-neg {
+  background: var(--red-bg);
+}
+
+.text-num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}

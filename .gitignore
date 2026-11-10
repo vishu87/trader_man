@@ -30,3 +30,5 @@ public/temp
 package-lock.json 
 .codex
 Sample
+/python/venv
+__pycache__/

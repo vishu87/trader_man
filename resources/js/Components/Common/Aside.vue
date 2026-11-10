@@ -4,6 +4,7 @@ defineProps({
     title:    { type: String,  default: '' },
     subtitle: { type: String,  default: '' },
     size:     { type: String,  default: '' },   // 'sm' | '' | 'lg' | 'xl'
+    top:      { type: Boolean, default: false }, // true = stack above the chart popup (a drawer opened from inside a modal)
 });
 
 const emit = defineEmits(['close']);
@@ -13,12 +14,12 @@ const emit = defineEmits(['close']);
     <teleport to="body">
         <!-- Overlay -->
         <transition name="fade-overlay">
-            <div v-if="show" class="aside-overlay" @click="emit('close')"></div>
+            <div v-if="show" class="aside-overlay" :class="{ 'aside-top': top }" @click="emit('close')"></div>
         </transition>
 
         <!-- Drawer -->
         <transition name="slide-aside">
-            <div v-if="show" :class="['aside-drawer', size ? `aside-${size}` : '']">
+            <div v-if="show" :class="['aside-drawer', size ? `aside-${size}` : '', top ? 'aside-top' : '']">
 
                 <!-- Header -->
                 <div class="aside-header">

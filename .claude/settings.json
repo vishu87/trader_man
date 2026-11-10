@@ -3,7 +3,8 @@
     "allow": [
       "Bash(cat routes/web.php routes/api.php resources/js/app.js resources/js/bootstrap.js resources/views/app.blade.php resources/views/sidebar.blade.php vite.config.js; echo ----; find resources/js Sample -type f -not -name .DS_Store | head -80; grep -E '^\\(APP_URL|DB_|VITE\\)' .env | sed -E 's/\\(PASSWORD=\\).*/\\\\1***/'; ls app/Console/Commands app/libraries 2>&1; ls /Applications/MAMP/htdocs/futures/app/libraries)",
       "Read(//Applications/MAMP/htdocs/futures/app/libraries/**)",
-      "Bash(cd /Applications/MAMP/htdocs/futures/app/libraries && grep -n \"function \\\\\\(getQuote\\\\|getLTP\\\\|setAccessToken\\\\|__construct\\\\|_get\\\\|_request\\\\|getOHLC\\\\\\)\" kiteconnect.php; grep -n \"curl\\\\|namespace\\\\|^class\\\\|^use\" kiteconnect.php | head -30; cat /Applications/MAMP/htdocs/trader_man/Sample/StudentUpload.php | head -60)"
+      "Bash(cd /Applications/MAMP/htdocs/futures/app/libraries && grep -n \"function \\\\\\(getQuote\\\\|getLTP\\\\|setAccessToken\\\\|__construct\\\\|_get\\\\|_request\\\\|getOHLC\\\\\\)\" kiteconnect.php; grep -n \"curl\\\\|namespace\\\\|^class\\\\|^use\" kiteconnect.php | head -30; cat /Applications/MAMP/htdocs/trader_man/Sample/StudentUpload.php | head -60)",
+      "Bash(grep -v \"DEPRECATED\\\\|^$\")"
     ]
   }
 }

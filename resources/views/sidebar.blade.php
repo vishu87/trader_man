@@ -15,10 +15,10 @@
 
 {{-- ── Brand header ───────────────────────────────────────── --}}
 <div class="sidebar-brand">
-    <div class="brand-logo-mark">v</div>
+    <div class="brand-logo-mark">T</div>
     <div class="brand-text-block">
-        <span class="brand-name">vivo</span>
-        <span class="brand-sub">Vision</span>
+        <span class="brand-name">Trader</span>
+        <span class="brand-sub">Man</span>
     </div>
     <button class="sidebar-collapse-btn" id="sidebarCollapseBtn" title="Collapse sidebar">
         <i class="bi bi-chevron-double-left" id="sidebarCollapseIcon"></i>

@@ -416,6 +416,10 @@
   &.aside-xl { width: 700px; }
 }
 
+// a drawer opened from inside the chart popup (z-index 1300) must sit above it
+.aside-overlay.aside-top { z-index: 1400; }
+.aside-drawer.aside-top  { z-index: 1405; }
+
 .aside-header {
   display: flex;
   align-items: center;
@@ -751,3 +755,556 @@ select.form-input {
 
 // Utility
 .cursor-pointer { cursor: pointer; }
+
+// ─── Portfolio ───────────────────────────────────────────────────
+
+// Summary tiles above the holdings table
+.pf-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.pf-stat {
+  background: #fff;
+  border: 1px solid #E7EBF1;
+  border-radius: 12px;
+  padding: 14px 16px;
+  box-shadow: 0 1px 2px rgba(16,24,40,0.04);
+}
+.pf-stat-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #8A94A6;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.pf-stat-value {
+  margin-top: 4px;
+  font-size: 20px;
+  font-weight: 600;
+  color: #101828;
+  font-variant-numeric: tabular-nums;
+}
+.pf-stat-sub { margin-top: 2px; font-size: 11.5px; color: #8A94A6; }
+
+// Bucket tabs
+.pf-tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  padding: 6px 12px 0;
+  border-bottom: 1px solid #E7EBF1;
+  overflow-x: auto;
+}
+.pf-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 12px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: #667085;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  margin-bottom: -1px;
+
+  &:hover { color: #344054; }
+  &.active { color: #2E6BFF; border-bottom-color: #2E6BFF; }
+}
+.pf-tab-count {
+  padding: 1px 7px;
+  border-radius: 10px;
+  background: #F2F4F7;
+  color: #667085;
+  font-size: 11px;
+  font-weight: 600;
+
+  .pf-tab.active & { background: #EEF4FF; color: #2E6BFF; }
+  &.warn   { background: var(--amber-bg); color: var(--amber-text); }
+  &.danger { background: var(--red-bg);   color: var(--red-text); }
+}
+.pf-tab-spacer { flex: 1; }
+
+// Sortable table header
+.th-sort {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  i { font-size: 11px; opacity: 0.5; margin-left: 4px; }
+  &.sorted i { opacity: 1; color: #2E6BFF; }
+}
+
+// Banner for LTP problems
+.pf-alert {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--amber-bg);
+  color: var(--amber-text);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+// Inline controls inside table cells (shift quantity / target)
+.pf-inline-input { width: 90px; }
+.pf-inline-select { min-width: 190px; }
+
+// "Checked" flag checkbox in the holdings table
+.pf-check {
+  width: 17px;
+  height: 17px;
+  accent-color: #0E9F5B;
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+// Holdings row that has been marked as checked — very light green
+.table > tbody > tr.pf-row-checked { --bs-table-bg: #F1FAF5; }
+
+// Link-style table icon button (chart) and its unavailable state
+a.tbl-icon-btn { text-decoration: none; }
+.tbl-icon-btn.disabled { opacity: 0.4; cursor: not-allowed; pointer-events: auto; &:hover { background: #fff; color: #667085; border-color: #E7EBF1; } }
+
+// ─── Charts ──────────────────────────────────────────────────────
+
+.chart-card {
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+.chart-card-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #F1F3F7;
+}
+.chart-area { width: 100%; height: 540px; }
+.chart-placeholder {
+  height: 160px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #8A94A6;
+  font-size: 13px;
+}
+// price line label chips (Avg / Buy / Stop loss)
+.chart-mark {
+  padding: 1px 8px;
+  border: 1px dashed;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+// Success variant of the banner (e.g. token refreshed)
+.pf-alert.pf-alert-ok { background: var(--green-bg); color: var(--green-text); }
+
+// Portfolio holdings toolbar: two rows (bucket + actions, then filters)
+.pf-toolbar { display: flex; flex-direction: column; gap: 10px; margin: 16px; }
+.pf-toolbar-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pf-bucket-info { white-space: nowrap; min-width: 0; }
+.pf-toolbar .btn-secondary-sm { white-space: nowrap; }
+
+// Scanner Signals page
+.sc-strategy { padding: 14px 16px; margin-top: 4px; }
+.sc-strategy-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.sc-preset { width: auto; max-width: 360px; }
+.sc-set { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; }
+.sc-live-line { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 12px; }
+.sc-groups { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+@media (max-width: 1200px) { .sc-groups { grid-template-columns: 1fr; } }
+.sc-group {
+  border: 1px solid #E7EBF1; border-radius: 10px; padding: 8px 12px 12px;
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; align-content: start;
+  legend { float: none; width: auto; margin: 0; padding: 0 6px; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #667085; }
+}
+.sc-field { display: flex; flex-direction: column; gap: 3px; margin: 0; font-size: 12px; color: #475467; min-width: 0;
+  > span { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}
+.sc-check { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 12.5px; font-weight: 500; color: #344054; cursor: pointer; }
+.sc-check.sc-field { flex-direction: row; align-items: center; }
+.sc-caps { grid-column: 1 / -1; }
+.sc-chart { width: 100%; }
+.sc-kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; padding: 14px 16px 6px; }
+@media (max-width: 1300px) { .sc-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.sc-kpi { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 1px solid #E7EBF1; border-radius: 10px;
+  span { font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: #667085; }
+  strong { font-size: 19px; font-variant-numeric: tabular-nums; }
+  small { font-size: 11.5px; color: #8A94A6; }
+}
+.sc-stale { margin: 10px 16px 0; padding: 8px 12px; border-radius: 8px; background: var(--amber-bg); font-size: 12.5px; font-weight: 600; }
+.sc-leak { display: flex; gap: 12px; margin: 14px 16px 0; padding: 12px 14px; border-radius: 10px; background: var(--red-bg); color: var(--red-text); font-size: 13px; line-height: 1.5;
+  > i { margin-top: 3px; font-size: 16px; }
+}
+.sc-leak-card { margin: 14px 16px 0; padding: 12px 14px; border: 1px solid #E7EBF1; border-radius: 10px; &.bad { border-color: #F3B4B4; background: #FFF8F8; } }
+.sc-skips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 16px 12px; }
+.sc-breakdown { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; padding: 16px; border-top: 1px solid #E7EBF1; }
+@media (max-width: 1000px) { .sc-breakdown { grid-template-columns: 1fr; } }
+.sc-sub { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #667085; margin-bottom: 6px; }
+.sc-note { margin: 0; padding: 10px 16px 16px; font-size: 12px; color: #8A94A6; }
+
+// Live Config + Live Signals pages
+.lc-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+@media (max-width: 1300px) { .lc-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 800px)  { .lc-grid { grid-template-columns: 1fr; } }
+.lc-card { padding: 14px 16px; h6 { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #667085; margin: 0 0 12px; } }
+.lc-hint { margin: 10px 0 0; font-size: 12px; color: #8A94A6; }
+.lc-err { margin-top: 6px; font-size: 12.5px; font-weight: 600; color: var(--red-text); }
+.lc-warn, .lc-note { display: flex; gap: 10px; margin-bottom: 14px; padding: 12px 14px; border-radius: 10px; font-size: 13px; line-height: 1.5; > i { margin-top: 2px; font-size: 16px; } }
+.lc-warn { background: var(--red-bg); color: var(--red-text); }
+.lc-note { background: var(--green-bg); color: var(--green-text); }
+.lc-actions { display: flex; justify-content: flex-end; margin-top: 16px; }
+.ls-attn { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; padding: 10px 14px; border-radius: 10px; background: var(--red-bg); color: var(--red-text); font-size: 13px; font-weight: 600; }
+.dc-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+.dc-key { font-size: 12px; color: #667085; }
+.dc-chart { width: 100%; height: 620px; }
+.dc-events td { font-size: 13px; }
+.ls-chart-btn { border: 0; background: none; padding: 0 4px; margin-left: 4px; color: #98A2B3; cursor: pointer; line-height: 1; }
+.ls-chart-btn:hover { color: #2E6BFF; }
+.q-rules { display: flex; align-items: center; gap: 12px; padding: 12px 16px; flex-wrap: wrap; }
+.q-rules-body { display: flex; gap: 16px; padding: 0 16px 12px; flex-wrap: wrap; }
+.q-bar { display: flex; align-items: center; gap: 8px; padding: 6px 16px 10px; flex-wrap: wrap; }
+.q-table { font-size: 13px; }
+.q-table th { font-size: 11px; white-space: nowrap; }
+.q-row { cursor: pointer; }
+.q-why { min-width: 150px; max-width: 280px; }
+.q-fail { display: inline-block; white-space: nowrap; font-size: 11px; background: #FEF3F2; color: #B42318; border-radius: 10px; padding: 1px 7px; margin: 1px 3px 1px 0; }
+.q-detail > td { background: #F8F9FB; }
+.q-checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 4px 18px; padding-top: 6px; }
+.q-check { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.q-check .bi { font-size: 14px; }
+.qs-pass .bi { color: #0E9F5B; }
+.qs-fail .bi { color: #E03131; }
+.qs-fail .q-check-label { font-weight: 600; }
+.qs-na { color: #98A2B3; }
+.q-check-label small { margin-left: 6px; font-size: 10px; text-transform: uppercase; color: #98A2B3; letter-spacing: .04em; }
+.q-check-val { margin-left: auto; color: #667085; font-variant-numeric: tabular-nums; }
+.ls-reason { white-space: normal; max-width: 420px; font-size: 12.5px; color: #667085; }
+
+// Red variant of the banner (an upload that failed)
+.pf-alert.pf-alert-bad { background: var(--red-bg); color: var(--red-text); }
+
+// Zerodha Trades page: result banner with notes, filters inside the tab bar, pager
+.pf-alert.zt-result { align-items: flex-start; white-space: normal; i.bi { margin-top: 2px; } }
+.zt-notes { margin: 6px 0 0; padding-left: 18px; font-weight: 500; font-size: 12.5px; }
+.pf-tabs .zt-filter { width: auto; flex: none; margin: 0 0 6px 6px; }
+.pf-tabs .btn-secondary-sm { flex: none; margin: 0 0 6px 6px; }
+.zt-pager {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-top: 1px solid #E7EBF1;
+  font-size: 13px;
+}
+
+// Follow star button in the stock tables
+.pf-star {
+  border: 0;
+  background: transparent;
+  padding: 2px 4px;
+  color: #C0C7D2;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  &:hover { color: #F59F00; }
+  &.on { color: #F59F00; }
+}
+
+// One box per symbol: weekly + daily panes stacked inside the card
+.chart-pane + .chart-pane { border-top: 1px solid #F1F3F7; }
+.chart-pane-label { padding: 10px 16px 0; }
+
+// Inline buy price / stop loss inputs in the watchlist table
+.pf-price-input { width: 108px; margin-left: auto; text-align: right; font-variant-numeric: tabular-nums; }
+
+// Veil + spinner over a chart that is reloading (bars / sync), so the page layout does not jump
+.chart-wrap { position: relative; }
+.chart-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.7);
+  color: #475467;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+// ─── Chart popup: weekly (top) and monthly (below) of one symbol ───
+
+.chart-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  background: rgba(16, 24, 40, 0.55);
+}
+.chart-modal {
+  display: flex;
+  flex-direction: column;
+  width: min(1800px, 100%);
+  height: min(940px, 100%);
+  overflow: hidden;
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 24px 60px rgba(16, 24, 40, 0.35);
+}
+.chart-modal-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-bottom: 1px solid #E7EBF1;
+}
+// The charts column and (optionally) the Trade panel beside it
+.chart-modal-main { flex: 1; min-height: 0; display: flex; }
+.trade-btn.is-on { background: #EEF4FF; border-color: #BCD0FF; color: #1D4ED8; i { color: #2E6BFF; } }
+
+// Nav pills under the header: Weekly | Monthly | Daily | All
+.chart-modal-tabs {
+  padding: 8px 16px;
+  border-bottom: 1px solid #E7EBF1;
+  background: #FBFCFE;
+}
+.chart-pills {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 9px;
+  background: #EEF1F6;
+}
+.chart-pill {
+  padding: 4px 14px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #5B6577;
+  font-size: 12.5px;
+  font-weight: 600;
+  transition: background 0.12s, color 0.12s;
+
+  &:hover { color: #101828; }
+  &.active { background: #fff; color: #1D4ED8; box-shadow: 0 1px 2px rgba(16, 24, 40, 0.12); }
+}
+
+// The chart area. One chart (Weekly / Monthly / Daily) fills it completely; "All" lays the three out side by side.
+.chart-modal-body {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+
+  .chart-pane {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+  }
+  .chart-pane-label { padding: 8px 14px 0; }
+  .chart-wrap { flex: 1; min-height: 0; }
+
+  &.is-single {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    .chart-pane { flex: 1; }
+    .chart-pane-label { display: none; }   // the pill already says which chart this is
+  }
+
+  &.is-all {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    overflow: hidden;
+    .chart-pane + .chart-pane { border-top: 0; border-left: 1px solid #E7EBF1; }
+  }
+}
+
+// Too narrow for three across (small window, or the Trade panel open on a laptop): stack them and scroll instead
+@media (max-width: 1100px) {
+  .chart-modal-body.is-all {
+    display: block;
+    overflow-y: auto;
+    .chart-pane { height: clamp(360px, calc(100vh - 190px), 620px); }
+    .chart-pane + .chart-pane { border-left: 0; border-top: 1px solid #E7EBF1; }
+  }
+}
+// The chart fills its pane by absolute positioning: a percentage height inside a flex chain is not reliably "definite"
+// in every browser, and a chart whose box resolves to 0px high simply does not show.
+.chart-area-fit { position: absolute; inset: 0; }
+.chart-placeholder-fit { flex: 1; height: auto; text-align: center; padding: 0 12px; flex-wrap: wrap; }
+
+// Follow / Following button in the popup header
+.follow-btn.is-following {
+  background: #FFF8E6;
+  border-color: #F5D08A;
+  color: #7A5200;
+  i { color: #F59F00; }
+}
+.follow-btn:disabled { opacity: 0.5; cursor: default; }
+
+// disabled icon buttons (Previous / Next at the ends of the list) and the disabled star
+.tbl-icon-btn:disabled { opacity: 0.4; cursor: not-allowed; &:hover { background: #fff; color: #667085; border-color: #E7EBF1; } }
+.pf-star:disabled { opacity: 0.4; cursor: default; }
+
+// ─── Trade panel (in the chart popup) ───
+
+.trade-panel {
+  flex: none;
+  width: 410px;
+  overflow-y: auto;
+  padding: 12px;
+  background: #F8FAFC;
+  border-left: 1px solid #E7EBF1;
+}
+.trade-card {
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  background: #fff;
+  border: 1px solid #E7EBF1;
+  border-radius: 10px;
+}
+.trade-title { font-size: 13px; font-weight: 700; color: #101828; margin-bottom: 8px; }
+.trade-sub { margin-top: 10px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: #8A94A6; }
+.trade-list { margin: 4px 0 0; padding-left: 18px; font-size: 12.5px; li { margin-bottom: 3px; } }
+.trade-note {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #F2F4F7;
+  color: #475467;
+  font-size: 12.5px;
+  &.warn { background: var(--amber-bg); color: var(--amber-text); }
+}
+.trade-kv {
+  width: 100%;
+  font-size: 12.5px;
+  td { padding: 3px 4px 3px 0; vertical-align: top; }
+  td:first-child { color: #667085; white-space: nowrap; }
+}
+
+// narrow windows: the panel goes under the charts instead of beside them
+@media (max-width: 900px) {
+  .chart-modal-main { flex-direction: column; overflow-y: auto; }
+  .chart-modal-body { flex: none; min-height: clamp(380px, 68vh, 640px); }   // in a column it would otherwise shrink to nothing
+  .trade-panel { width: auto; border-left: 0; border-top: 1px solid #E7EBF1; overflow: visible; }
+}
+
+// ─── Fibonacci editor ────────────────────────────────────────────
+
+.fib-card {
+  border: 1px solid #E4E8EF;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+
+  &.is-hidden { opacity: 0.55; }
+  &.is-editing { border-color: #2E6BFF; box-shadow: 0 0 0 2px rgba(46, 107, 255, 0.12); }
+}
+
+.fib-swing {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 12.5px;
+
+  small { color: #8A94A6; }
+  .bi { color: #8A94A6; font-size: 11px; }
+}
+
+.fib-more {
+  margin-top: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #2E6BFF;
+  font-size: 12px;
+}
+
+.fib-levels { margin-top: 6px; }
+
+// the Fib button on a chart box when that symbol has levels drawn
+.tbl-icon-btn.fib-on { color: #B7791F; background: #FFF6E0; }
+
+// ─── Trade Signals page ─────────────────────────────────────────────────
+
+.trade-bar {
+  position: relative;
+  height: 8px;
+  min-width: 120px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #FBD5D5 0%, #F3F4F6 50%, #CDEFDD 100%);
+}
+
+.trade-bar-entry {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  background: #5B6577;
+  transform: translateX(-1px);
+}
+
+.trade-bar-now {
+  position: absolute;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: #2E6BFF;
+  box-shadow: 0 0 0 1px #2E6BFF;
+  transform: translate(-50%, -50%);
+}
+
+.trade-bar-legend {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 3px;
+  font-size: 10.5px;
+  color: #8A94A6;
+}
+
+tr.trade-alert td { background: #FFF5F5; }
+
+// ─── Trades page (real trades) ───────────────────────────────────
+
+// the expanded buys and sells under a trade
+tr.trade-detail-row > td { background: #F8FAFC; padding-top: 10px; padding-bottom: 12px; }
+.trade-actions {
+  width: 100%;
+  font-size: 12.5px;
+  th { padding: 4px 10px 4px 0; font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: #8A94A6; border: 0; background: none; }
+  td { padding: 5px 10px 5px 0; border-top: 1px solid #E7EBF1; vertical-align: middle; }
+}
+
+// Buy / Sell switch in the add-entry drawer
+.side-toggle { display: flex; gap: 6px; }
+.side-btn {
+  flex: 1;
+  padding: 7px 0;
+  border: 1px solid #D5DAE3;
+  border-radius: 8px;
+  background: #fff;
+  color: #5B6577;
+  font-weight: 600;
+  &.buy.on  { background: #E6F6EE; border-color: #0E9F5B; color: #0A7A45; }
+  &.sell.on { background: #FDECEC; border-color: #E03131; color: #B42318; }
+}

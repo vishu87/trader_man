@@ -2,7 +2,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <title>vivo Vision - Backend</title>
+    <title>Trader Man</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
@@ -39,6 +39,7 @@
 
 <script>
     var base_url = "{{url('/')}}";
+    var trade_signals_enabled = {{ config('services.trade_signals.enabled') ? 'true' : 'false' }};
     @if(Auth::check())
         var api_key   = "{{ Auth::user()->api_token }}";
         var client_id = "{{ Auth::user()->client_id }}";
