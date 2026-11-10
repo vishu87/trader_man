@@ -84,8 +84,11 @@ class LiveController extends Controller
     {
         User::AuthenticateUser($request->header('apiToken'));
 
-        return Response::json(['success' => true, 'signals' => LiveSignal::orderByDesc('id')->limit(300)->get()->map(fn ($s) => [
-            'id' => $s->id, 'alert_name' => $s->alert_name, 'symbol' => $s->symbol, 'exchange' => $s->exchange, 'trigger_price' => $s->trigger_price !== null ? (float) $s->trigger_price : null,
+        // the main list leaves the ignored ones out (they come in their thousands: ChartInk repeats a stock every 5 minutes); ask for them with ignored = 1
+        $ignored = $request->boolean('ignored');
+
+        return Response::json(['success' => true, 'ignored_count' => LiveSignal::where('ignored', 1)->count(), 'signals' => LiveSignal::where('ignored', $ignored ? 1 : 0)->orderByDesc('id')->limit(300)->get()->map(fn ($s) => [
+            'id' => $s->id, 'alert_name' => $s->alert_name, 'scan_name' => $s->scan_name, 'ignored' => (bool) $s->ignored, 'repeat_of' => $s->repeat_of, 'symbol' => $s->symbol, 'exchange' => $s->exchange, 'trigger_price' => $s->trigger_price !== null ? (float) $s->trigger_price : null,
             'sector' => $s->sector, 'market_cap' => $s->market_cap, 'alert_rsi' => $s->alert_rsi !== null ? (float) $s->alert_rsi : null,
             'triggered_at' => $s->triggered_at, 'received_at' => $s->received_at, 'status' => $s->status, 'verdict' => $s->verdict, 'score' => $s->score,
             'action' => $s->action, 'reason' => $s->reason, 'position_id' => $s->position_id, 'checks' => (int) $s->checks, 'checked_at' => $s->checked_at,

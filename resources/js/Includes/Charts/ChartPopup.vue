@@ -62,6 +62,8 @@ function toggleTrade() {
 
 // The Fibonacci editor (a drawer on top of the popup). While it is open the popup's keyboard shortcuts stand down.
 const showFib = ref(false);
+const fibRef  = ref(null);       // the editor: the panes send it the candle that was clicked
+const fibPicking = ref(false);   // it is waiting for a candle click
 
 const index  = ref(0);
 const bodyEl = ref(null);   // the scrolling area — sent back to the top (weekly) on every Next / Previous
@@ -350,8 +352,8 @@ function onSync() { startSync(); }
                         <!-- keyed by symbol and view: every Next / Previous / pill gives fresh panes sized for it -->
                         <ChartPane
                             v-for="p in panes" :key="keyOf(current) + p.tf + view"
-                            :item="paneItem" :timeframe="p.tf" :bars="p.bars" :reload-key="reloadKey" compact auto-start
-                            @sync="onSync" @loaded="onLoaded"
+                            :item="paneItem" :timeframe="p.tf" :bars="p.bars" :reload-key="reloadKey" :picking="fibPicking" compact auto-start
+                            @sync="onSync" @loaded="onLoaded" @pick="(c) => fibRef && fibRef.onPicked(c)"
                         />
                     </div>
 
@@ -362,6 +364,6 @@ function onSync() { startSync(); }
             </div>
         </div>
 
-        <FibAside :show="show && showFib" :item="current" top @close="showFib = false" @changed="onFibChanged" />
+        <FibAside ref="fibRef" :show="show && showFib" :item="current" top @close="showFib = false" @changed="onFibChanged" @picking="(v) => fibPicking = !!v" />
     </teleport>
 </template>

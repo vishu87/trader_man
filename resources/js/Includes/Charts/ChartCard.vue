@@ -9,9 +9,10 @@ defineProps({
     timeframes: { type: Array,  required: true },    // ['weekly', 'daily'] | ['weekly'] | ['daily']
     bars:       { type: Number, default: 200 },
     reloadKey:  { type: Number, default: 0 },        // bump to refetch (e.g. after a sync)
+    picking:    { type: Boolean, default: false },   // the Fibonacci editor is waiting for a candle click on this symbol's charts
 });
 
-const emit = defineEmits(['sync', 'follow', 'remove', 'fib']);
+const emit = defineEmits(['sync', 'follow', 'remove', 'fib', 'pick']);
 
 const kiteUrl = (i) => `https://kite.zerodha.com/markets/ext/chart/web/ciq/${i.exchange}/${encodeURIComponent(i.symbol)}/${i.instrument_token}`;
 
@@ -67,8 +68,8 @@ function onLoaded(info) {
 
         <ChartPane
             v-for="tf in timeframes" :key="tf"
-            :item="item" :timeframe="tf" :bars="bars" :reload-key="reloadKey"
-            @sync="(s) => emit('sync', s)" @loaded="onLoaded"
+            :item="item" :timeframe="tf" :bars="bars" :reload-key="reloadKey" :picking="picking"
+            @sync="(s) => emit('sync', s)" @loaded="onLoaded" @pick="(p) => emit('pick', p)"
         />
     </div>
 </template>

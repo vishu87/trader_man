@@ -7,7 +7,9 @@ import DayChart from '@/Includes/LiveSignals/DayChart.vue';
 // What live trading is doing: the alerts as they arrive and what the engine did with each, what we hold, and every order.
 // Read-only: the engine itself is App\Services\Live (webhook → signals → orders, and the once-a-minute check).
 const overview  = ref(null);
-const signals   = ref([]);
+const signals   = ref([]);                  // the signals that count (the ignored repeats are kept apart)
+const ignoredRows  = ref([]);               // ignored: repeats of a signal we already have, or of a stock we hold — loaded when its tab is opened
+const ignoredCount = ref(0);
 const positions = ref({ open: [], closed: [] });
 const orders    = ref([]);
 const tab       = ref('signals');          // signals | positions | orders
@@ -44,7 +46,10 @@ function loadOverview() {
 
 function loadTab() {
     const t = tab.value;
-    if (t === 'signals')   return DBService.postData('/api/live/signals', {}).then((d) => { if (d.success) { signals.value = d.signals; Object.keys(timeline.value).forEach((id) => loadChecks(id)); } });
+    if (t === 'signals')   return Promise.all([
+        DBService.postData('/api/live/signals', {}).then((d) => { if (d.success) { signals.value = d.signals; ignoredCount.value = d.ignored_count; Object.keys(timeline.value).forEach((id) => loadChecks(id)); } }),
+        filter.value === 'ignored' ? loadIgnored() : null,
+    ]);
     if (t === 'positions') return DBService.postData('/api/live/positions', {}).then((d) => { if (d.success) positions.value = d; });
     return DBService.postData('/api/live/orders', {}).then((d) => { if (d.success) orders.value = d.orders; });
 }
@@ -57,8 +62,20 @@ function openChart(symbol, date) {
 
 // signal list: filter, and the status-over-time of one signal
 const filter = ref('all');
-const shown = computed(() => filter.value === 'all' ? signals.value : signals.value.filter((s) => GROUP[s.status] === filter.value));
-const countOf = (f) => f === 'all' ? signals.value.length : signals.value.filter((s) => GROUP[s.status] === f).length;
+const alertFilter = ref('all');   // all | an alert name — alerts from different ChartInk scans are recorded side by side
+function loadIgnored() {
+    return DBService.postData('/api/live/signals', { ignored: 1 }).then((d) => { if (d.success) { ignoredRows.value = d.signals; ignoredCount.value = d.ignored_count; } });
+}
+function setFilter(f) {
+    filter.value = f;
+    if (f === 'ignored') loadIgnored();
+}
+// the alert names seen, with how many signals each (the ignored list is only loaded when opened)
+const alertNames = computed(() => [...new Set([...signals.value, ...ignoredRows.value].map((s) => s.alert_name))].sort());
+const byAlert = (list) => alertFilter.value === 'all' ? list : list.filter((s) => s.alert_name === alertFilter.value);
+const shown = computed(() => filter.value === 'ignored' ? byAlert(ignoredRows.value)
+    : byAlert(filter.value === 'all' ? signals.value : signals.value.filter((s) => GROUP[s.status] === filter.value)));
+const countOf = (f) => f === 'ignored' ? ignoredCount.value : byAlert(f === 'all' ? signals.value : signals.value.filter((s) => GROUP[s.status] === f)).length;
 
 const timeline = ref({});     // signal id -> checks (open rows)
 function loadChecks(id) {
@@ -187,20 +204,24 @@ const todayWaiting = computed(() => today('new') + today('working') + today('wat
                 <!-- ── signals ── -->
                 <div v-if="tab === 'signals'">
                     <div class="ls-filters">
-                        <button v-for="f in FILTERS" :key="f[0]" class="pf-tab" :class="{ active: filter === f[0] }" style="padding:4px 10px" @click="filter = f[0]">{{ f[1] }} <span class="pf-tab-count">{{ countOf(f[0]) }}</span></button>
+                        <button v-for="f in FILTERS" :key="f[0]" class="pf-tab" :class="{ active: filter === f[0] }" style="padding:4px 10px" @click="setFilter(f[0])">{{ f[1] }} <span class="pf-tab-count">{{ countOf(f[0]) }}</span></button>
+                        <select v-if="alertNames.length > 1" v-model="alertFilter" class="form-select form-select-sm ms-auto" style="width:auto" title="Show the signals of one alert (one ChartInk scan) only">
+                            <option value="all">All alerts</option>
+                            <option v-for="a in alertNames" :key="a" :value="a">{{ a }}</option>
+                        </select>
                     </div>
                     <div class="table-responsive">
                     <table class="table table-hover align-middle mb-0">
                         <thead><tr><th style="width:28px"></th><th>Received</th><th>Stock</th><th>Alert</th><th class="text-end">Alert price</th><th>Rated</th><th>Status</th><th>Why</th></tr></thead>
                         <tbody>
-                            <tr v-if="!shown.length"><td colspan="8" class="text-center py-5 text-muted">{{ signals.length ? 'No signals in this group.' : 'No alerts yet. When ChartInk calls the webhook they appear here within a second.' }}</td></tr>
+                            <tr v-if="!shown.length"><td colspan="8" class="text-center py-5 text-muted">{{ filter === 'ignored' ? 'Nothing ignored yet. Repeats of a signal we already have (ChartInk fires a stock again every 5 minutes) are kept here, apart from the main list.' : (signals.length ? 'No signals in this group.' : 'No alerts yet. When ChartInk calls the webhook they appear here within a second.') }}</td></tr>
                             <template v-for="s in shown" :key="s.id">
                                 <tr>
                                     <td class="p-0 ps-2"><button v-if="s.checks" class="tbl-icon-btn" :title="timeline[s.id] ? 'Hide how its status changed' : 'Show how its status changed over time'" @click="toggleChecks(s)"><i class="bi" :class="timeline[s.id] ? 'bi-chevron-down' : 'bi-chevron-right'"></i></button></td>
                                     <td class="text-nowrap mono">{{ ts(s.received_at) }}<div class="cell-secondary" style="margin:0" title="The time ChartInk gave the alert">fired {{ s.triggered_at.slice(11, 16) }}</div></td>
                                     <td class="cell-primary mono">{{ s.symbol }}<span class="ls-ex" :class="{ 'ls-ex-bse': s.exchange === 'BSE' }" :title="s.exchange === 'BSE' ? 'Not listed on NSE: traded on BSE' : 'Traded on NSE'">{{ s.exchange }}</span><button class="ls-chart-btn" title="View the chart of the day" @click="openChart(s.symbol, s.triggered_at)"><i class="bi bi-graph-up"></i></button>
                                         <div v-if="s.sector || s.market_cap" class="cell-secondary" style="margin:0">{{ [s.sector, s.market_cap].filter(Boolean).join(' · ') }}</div></td>
-                                    <td class="text-muted">{{ s.alert_name }}</td>
+                                    <td class="text-muted">{{ s.alert_name }}<div v-if="s.scan_name" class="cell-secondary" style="margin:0" title="The ChartInk scan this alert came from">{{ s.scan_name }}</div></td>
                                     <td class="text-num">{{ s.trigger_price ? fmtPrice(s.trigger_price) : '—' }}<div v-if="s.alert_rsi !== null" class="cell-secondary" style="margin:0">RSI {{ fmtNum(s.alert_rsi, 1) }}</div></td>
                                     <td>
                                         <template v-if="s.verdict"><span class="status-chip" :class="VERDICT[s.verdict][0]">{{ VERDICT[s.verdict][1] }}</span><span v-if="s.score !== null" class="cell-secondary ms-1" style="margin:0" title="How many of the checks passed">{{ s.score }}%</span></template>

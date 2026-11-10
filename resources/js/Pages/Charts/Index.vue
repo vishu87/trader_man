@@ -158,6 +158,8 @@ function removeSymbol(item) {
 
 // Fibonacci editor for one symbol; its swings are drawn on that symbol's weekly / daily / monthly charts
 const fibItem = ref(null);
+const fibRef  = ref(null);       // the editor: charts send it the candle that was clicked
+const fibPicking = ref(false);   // it is waiting for a candle click
 function onFibChanged(lines) {
     if (fibItem.value) fibItem.value.fibs = lines;   // the item is shared by the symbol's charts, so they all redraw
 }
@@ -294,11 +296,11 @@ function startSync(symbol = null) {
         <!-- One box per symbol, its weekly and daily charts stacked inside (weekly first, like the futures graph page) -->
         <ChartCard
             v-for="s in shown" :key="s.key"
-            :item="s" :timeframes="timeframes" :bars="bars" :reload-key="reloadKey"
-            @sync="startSync" @follow="toggleFollow" @remove="removeSymbol" @fib="(i) => fibItem = i"
+            :item="s" :timeframes="timeframes" :bars="bars" :reload-key="reloadKey" :picking="fibPicking && !!fibItem && fibItem.key === s.key"
+            @sync="startSync" @follow="toggleFollow" @remove="removeSymbol" @fib="(i) => fibItem = i" @pick="(p) => fibRef && fibRef.onPicked(p)"
         />
 
-        <FibAside :show="!!fibItem" :item="fibItem" @close="fibItem = null" @changed="onFibChanged" />
+        <FibAside ref="fibRef" :show="!!fibItem" :item="fibItem" @close="fibItem = null" @changed="onFibChanged" @picking="(v) => fibPicking = !!v" />
 
     </Content>
 </template>

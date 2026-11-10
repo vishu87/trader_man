@@ -10,9 +10,10 @@ const props = defineProps({
     reloadKey: { type: Number, default: 0 },       // bump to refetch (e.g. after a sync)
     compact:   { type: Boolean, default: false },  // popup mode: fills its box, smaller text
     autoStart: { type: Boolean, default: false },  // load straight away instead of waiting to scroll into view
+    picking:   { type: Boolean, default: false },  // the Fibonacci editor wants a candle: a click on one is sent up as 'pick'
 });
 
-const emit = defineEmits(['sync', 'loaded']);
+const emit = defineEmits(['sync', 'loaded', 'pick']);
 
 const root     = ref(null);
 const chartEl  = ref(null);
@@ -48,12 +49,28 @@ function load() {
     });
 }
 
+// While the Fibonacci editor is picking, a click on a candle (its column, price pane or volume pane) reports that candle:
+// date, open, close, low, high. A click in the empty stretch on the right (where the Fibonacci lines run) is ignored.
+function onChartClick(e) {
+    if (!props.picking || !chart || !data) return;
+    const p = [e.offsetX, e.offsetY];
+    for (const g of [0, 1]) {
+        if (!chart.containPixel({ gridIndex: g }, p)) continue;
+        const i = Math.round(chart.convertFromPixel({ gridIndex: g }, p)[0]);
+        if (!(i >= 0 && i < data.candles.length)) return;
+        const c = data.candles[i];
+        emit('pick', { timeframe: props.timeframe, date: data.x_axis[i], open: c[0], close: c[1], low: c[2], high: c[3] });
+        return;
+    }
+}
+
 function draw() {
     if (!chartEl.value || !data) return;
     if (!chart) {
         chart = echarts.init(chartEl.value);
         resizer = new ResizeObserver(() => chart && chart.resize());
         resizer.observe(chartEl.value);
+        chart.getZr().on('click', onChartClick);
     }
     chart.setOption(buildOption(data, props.item.marks, { compact: props.compact, fibs: props.item.fibs || [] }), true);
 }
@@ -92,7 +109,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-    <div ref="root" class="chart-pane" :class="{ 'chart-pane-fit': compact }">
+    <div ref="root" class="chart-pane" :class="{ 'chart-pane-fit': compact, 'chart-picking': picking }">
         <div class="chart-pane-label"><span class="form-badge">{{ LABELS[timeframe] }}</span></div>
 
         <div class="chart-wrap">

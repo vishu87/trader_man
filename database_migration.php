@@ -127,6 +127,9 @@ ALTER TABLE `watchlist_items` ADD `follow` TINYINT(1) NOT NULL DEFAULT 0 AFTER `
 -- Your own star rating of a watchlist symbol (1 = weak … 5 = best); NULL = not rated. Set from the Watchlist list or the chart popup.
 ALTER TABLE `watchlist_items` ADD `rating` TINYINT NULL DEFAULT NULL AFTER `follow`;
 
+-- Your own free-text comment about a watchlist symbol (up to 5000 characters), shown under the symbol and edited in place. Kept on every watchlist row of the symbol, like the rating.
+ALTER TABLE `watchlist_items` ADD `comment` TEXT NULL DEFAULT NULL AFTER `rating`;
+
 -- Candle sync bookkeeping: when each symbol was last synced SUCCESSFULLY (a general run skips symbols that are
 -- already fresh; a symbol-specific run always refetches) and why the last attempt failed, if it did.
 CREATE TABLE `stock_candle_sync` (
@@ -556,3 +559,11 @@ CREATE TABLE `live_signal_checks` (
 --   setting_key = 'kite_token_date'    → the day it is valid for (Y-m-d); a token of an earlier day is never used
 -- The old `mysql_futures` connection (DB_*_FUTURES in .env) is removed.
 
+-- Live signals: ignored is a SEPARATE field (not only a status). A repeat of a signal we already have — same alert, same stock, same day, the
+-- earlier one still waiting / bought / judged Skip (or an alert that is not enabled: record-only) — and a signal for a stock we already hold are stored
+-- with ignored = 1 (status stays 'ignored', repeat_of = the signal it repeats). The Signals tab's All / Waiting / … lists leave them out; the Ignored tab shows them.
+ALTER TABLE `live_signals`
+  ADD COLUMN `ignored` TINYINT(1) NOT NULL DEFAULT 0 AFTER `status`,
+  ADD COLUMN `repeat_of` INT NULL DEFAULT NULL AFTER `ignored`,
+  ADD INDEX `idx_live_signals_ignored` (`ignored`, `id`);
+UPDATE `live_signals` SET `ignored` = 1 WHERE `status` = 'ignored';

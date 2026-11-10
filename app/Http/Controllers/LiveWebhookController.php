@@ -41,14 +41,14 @@ class LiveWebhookController extends Controller
         $by = fn (string $st) => count(array_filter($entries, fn ($e) => $e['status'] === $st));
         $message = $r['signals'] === 0
             ? 'Received, but the call has no stocks'
-            : $r['signals'] . ' stock(s) received: ' . $by('new') . ' waiting for their candle, ' . $by('skipped') . ' skipped, ' . $r['duplicates'] . ' already stored from an earlier identical call';
+            : $r['signals'] . ' stock(s) received: ' . $by('new') . ' waiting for their candle, ' . $by('skipped') . ' skipped, ' . $by('ignored') . ' ignored as repeats, ' . $r['duplicates'] . ' already stored from an earlier identical call';
 
         // everything stored, so a call can be checked from ChartInk's test button / curl without opening the database
         return Response::json([
             'success' => true, 'message' => $message,
             'received_at' => Clock::now()->toDateTimeString(), 'raw_id' => $r['raw_id'],
             'alert_name' => trim((string) $request->input('alert_name', '')) ?: null, 'scan_name' => $request->input('scan_name'), 'triggered_at_sent' => $request->input('triggered_at'),
-            'counts' => ['stocks' => $r['signals'], 'new' => $r['new'], 'skipped' => $by('skipped'), 'duplicates' => $r['duplicates']],
+            'counts' => ['stocks' => $r['signals'], 'new' => $r['new'], 'skipped' => $by('skipped'), 'ignored' => $by('ignored'), 'duplicates' => $r['duplicates']],
             'entries' => $entries,
         ], 200, [], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
     }

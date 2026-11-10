@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch } from 'vue';
+import { ref, watch, onBeforeUnmount } from 'vue';
 import { useForm } from 'vee-validate';
 import DBService from '@/Service/Utils/DBService.js';
 import { fmtPrice, fmtDate } from '@/Service/Utils/Format.js';
@@ -13,7 +13,7 @@ const props = defineProps({
     top:  { type: Boolean, default: false },     // opened from inside the chart popup → stack above it
 });
 
-const emit = defineEmits(['close', 'changed']);   // changed(swings) — what the charts should draw now
+const emit = defineEmits(['close', 'changed', 'picking']);   // changed(swings) — what the charts should draw now; picking(step | null) — waiting for a candle click
 
 const { handleSubmit, resetForm } = useForm();
 
@@ -38,9 +38,73 @@ const directionOptions = [
 
 const body = () => ({ symbol: props.item.symbol, exchange: props.item.exchange });
 
+// ─── Picking the low / high by clicking candles on the charts ────────
+// While picking, the drawer slides out of the way (it stays mounted, so the form keeps its values) and a banner says what to click.
+// The charts report the clicked candle through onPicked(). The candle's LOW is used for the low, its HIGH for the high.
+// Two daily candles → "from two dates" (exactly what the server would read); anything else → the prices themselves.
+const picking  = ref(null);                       // null | 'low' | 'high' | 'both-low' | 'both-high'
+const pickInfo = ref({ low: null, high: null });  // { timeframe, date, price } of the candle picked for each
+
+const TF = { daily: 'daily', weekly: 'weekly', monthly: 'monthly' };
+const pickText = (r) => `${fmtPrice(r.price)} (${TF[r.timeframe] || r.timeframe} candle ${fmtDate(r.date)})`;
+
+function startPick(which) {
+    error.value = notice.value = '';
+    picking.value = which === 'both' ? 'both-low' : which;
+}
+
+function cancelPick() { picking.value = null; }
+
+function onPicked(c) {
+    const step = picking.value;
+    if (!step) return;
+    const isLow = step === 'low' || step === 'both-low';
+    const rec = { timeframe: c.timeframe, date: c.date, price: isLow ? c.low : c.high };
+
+    if (isLow) { pickInfo.value.low = rec; model.value.low_price = rec.price; }
+    else       { pickInfo.value.high = rec; model.value.high_price = rec.price; }
+
+    if (step === 'both-low') { picking.value = 'both-high'; return; }   // now the high
+    picking.value = null;
+    applyPicks();
+}
+
+function applyPicks() {
+    const { low, high } = pickInfo.value;
+    const m = model.value;
+    m.mode = 'values';
+    if (!low || !high) return;
+
+    // which came first decides the swing's direction
+    m.direction = low.date > high.date ? 'down' : 'up';
+    if (high.price <= low.price) { error.value = `The high (${fmtPrice(high.price)}) must be above the low (${fmtPrice(low.price)}) — pick them again`; return; }
+
+    if (low.timeframe === 'daily' && high.timeframe === 'daily' && low.date !== high.date) {
+        m.mode = 'dates';
+        m.low_date = low.date;
+        m.high_date = high.date;
+    } else if (low.date === high.date && low.timeframe === high.timeframe) {
+        notice.value = 'Both are the same candle, so its direction is not known — it is set to an up swing; change it below if it was a down swing.';
+    }
+}
+
+function onKey(e) {
+    if (picking.value && e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cancelPick(); }
+}
+
+watch(picking, (v) => {
+    emit('picking', v);
+    if (v) window.addEventListener('keydown', onKey, true); else window.removeEventListener('keydown', onKey, true);
+});
+onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true));
+
+defineExpose({ onPicked });
+
 watch(() => props.show, (val) => {
+    if (!val) picking.value = null;
     if (!val || !props.item) return;
     resetForm();
+    pickInfo.value = { low: null, high: null };
     model.value = blank();
     error.value = notice.value = '';
     fibs.value = [];
@@ -72,19 +136,21 @@ const submit = handleSubmit(() => {
         applyReply(data);
         notice.value = data.message;
         resetForm();
+        pickInfo.value = { low: null, high: null };
         model.value = blank();
     });
 });
 
 function edit(f) {
     error.value = notice.value = '';
+    pickInfo.value = { low: null, high: null };
     model.value = {
         id: f.id, mode: f.source, label: f.label || '', low_date: f.low_date || '', high_date: f.high_date || '',
         low_price: f.low_price, high_price: f.high_price, direction: f.direction,
     };
 }
 
-function cancelEdit() { model.value = blank(); error.value = ''; }
+function cancelEdit() { model.value = blank(); pickInfo.value = { low: null, high: null }; error.value = ''; }
 
 function toggle(f) {
     DBService.postData('/api/fib/toggle', { id: f.id, shown: f.is_shown ? 0 : 1 }).then((data) => {
@@ -108,7 +174,7 @@ const levelName = (l) => l.ratio === 0 ? 'Swing start' : l.ratio === 1 ? 'Swing 
 </script>
 
 <template>
-    <Aside :show="show" :top="top" title="Fibonacci levels" :subtitle="item ? `${item.exchange}:${item.symbol} — drawn on the daily, weekly and monthly charts` : ''" @close="emit('close')">
+    <Aside :show="show" :top="top" :away="!!picking" title="Fibonacci levels" :subtitle="item ? `${item.exchange}:${item.symbol} — drawn on the daily, weekly and monthly charts` : ''" @close="emit('close')">
 
         <!-- saved swings -->
         <div v-if="loading" class="text-muted py-3"><span class="spinner-border spinner-border-sm me-2"></span> Loading…</div>
@@ -160,6 +226,21 @@ const levelName = (l) => l.ratio === 0 ? 'Swing start' : l.ratio === 1 ? 'Swing 
         <div v-if="error" class="trade-note warn mb-2">{{ error }}</div>
         <div v-else-if="notice" class="trade-note mb-2">{{ notice }}</div>
 
+        <!-- click the candles on the charts instead of typing -->
+        <div class="fib-pick">
+            <div class="fib-pick-title"><i class="bi bi-cursor"></i> Pick from the chart</div>
+            <div class="d-flex gap-2 flex-wrap">
+                <button type="button" class="btn-secondary-sm" :disabled="busy" title="Click the low candle, then the high candle" @click="startPick('both')"><i class="bi bi-hand-index"></i> Low, then high</button>
+                <button type="button" class="btn-secondary-sm" :disabled="busy" title="Click just the low candle" @click="startPick('low')">Low only</button>
+                <button type="button" class="btn-secondary-sm" :disabled="busy" title="Click just the high candle" @click="startPick('high')">High only</button>
+            </div>
+            <div v-if="pickInfo.low || pickInfo.high" class="fib-pick-info mono">
+                <span v-if="pickInfo.low">Low {{ pickText(pickInfo.low) }}</span>
+                <span v-if="pickInfo.high">High {{ pickText(pickInfo.high) }}</span>
+            </div>
+            <div class="text-muted" style="font-size:12px">The drawer steps aside; click a candle on any chart (the low of the candle is used for the low, its high for the high), then check the values and press Add swing.</div>
+        </div>
+
         <form id="fibForm" novalidate @submit.prevent="submit()">
             <div class="row g-3">
                 <FormSelect label="Take the low and high" name="mode" cls="col-12" v-model="model.mode" :options="modeOptions" :disabled="busy" />
@@ -201,4 +282,19 @@ const levelName = (l) => l.ratio === 0 ? 'Swing start' : l.ratio === 1 ? 'Swing 
             </div>
         </template>
     </Aside>
+
+    <!-- what to click while the drawer is out of the way -->
+    <teleport to="body">
+        <div v-if="picking" class="fib-pick-banner">
+            <i class="bi bi-hand-index"></i>
+            <div>
+                <template v-if="picking === 'low' || picking === 'both-low'">Click the candle for the swing <strong>LOW</strong></template>
+                <template v-else>
+                    <template v-if="pickInfo.low && picking === 'both-high'">Low {{ pickText(pickInfo.low) }} ✓ — now </template>Click the candle for the swing <strong>HIGH</strong>
+                </template>
+                <small>on any chart · Esc to cancel</small>
+            </div>
+            <button type="button" class="btn-secondary-sm" @click="cancelPick">Cancel</button>
+        </div>
+    </teleport>
 </template>

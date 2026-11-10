@@ -53,7 +53,13 @@ class WatchlistController extends Controller
             $owned[$k]['buckets'][] = ($bucket_names[$h->bucket_id] ?? '—') . ' (' . (int) $h->quantity . ')';
         }
 
-        $rows = $items->map(function ($i) use ($kite, $list_names, $owned, $viewed, &$missing) {
+        // the comment belongs to the symbol (kept on all its watchlist rows): the most recently saved one wins
+        $comments = [];
+        foreach ($items->sortBy('updated_at') as $i) {
+            if ($i->comment !== null && $i->comment !== '') $comments[$i->exchange . ':' . $i->symbol] = $i->comment;
+        }
+
+        $rows = $items->map(function ($i) use ($kite, $list_names, $owned, $viewed, $comments, &$missing) {
             $key   = $i->exchange . ':' . $i->symbol;
             $ltp   = $kite['ltps'][$key] ?? KiteService::NO_LTP;
             $has   = $ltp > 0;
@@ -85,6 +91,7 @@ class WatchlistController extends Controller
                 // (resources/js/Service/Utils/Watchlist.js) so they update the moment a price is edited inline
                 'follow'           => (int) $i->follow,
                 'rating'           => $i->rating !== null ? (int) $i->rating : null,   // 1–5 stars, or null = not rated
+                'comment'          => $comments[$key] ?? null,                          // your note on the symbol, or null
                 'last_viewed'      => $viewed[$key] ?? null,
                 // null, or ['quantity' => total held, 'buckets' => ['Core (250)', ...]]
                 'in_portfolio'     => $owned[$key] ?? null,
@@ -201,6 +208,38 @@ class WatchlistController extends Controller
         $item->save();
 
         return Response::json(['success' => true, 'message' => $request->id ? 'Symbol updated' : 'Symbol added'], 200);
+    }
+
+    const MAX_COMMENT = 5000;
+
+    /**
+     * Save the comment of a symbol (empty clears it). It belongs to the symbol, so it is set on every watchlist row the symbol has,
+     * the same way the rating is.
+     */
+    public function itemComment(Request $request)
+    {
+        User::AuthenticateUser($request->header('apiToken'));
+
+        $validator = Validator::make($request->all(), [
+            'symbol'   => 'required|string|max:50',
+            'exchange' => 'nullable|in:NSE,BSE',
+            'comment'  => 'nullable|string|max:' . self::MAX_COMMENT,
+        ], ['comment.max' => 'A comment can be at most ' . self::MAX_COMMENT . ' characters']);
+        if (!$validator->passes()) {
+            return Response::json(['success' => false, 'message' => $validator->errors()->first()], 200);
+        }
+
+        $exchange = $request->exchange ?: 'NSE';
+        $symbol   = strtoupper(trim($request->symbol));
+        $comment  = trim(str_replace("\r\n", "\n", (string) $request->comment));
+        $comment  = $comment === '' ? null : $comment;
+
+        $count = WatchlistItem::where('exchange', $exchange)->where('symbol', $symbol)->update(['comment' => $comment, 'updated_at' => now()]);
+        if ($count === 0) {
+            return Response::json(['success' => false, 'message' => "{$exchange}:{$symbol} is not in any watchlist"], 200);
+        }
+
+        return Response::json(['success' => true, 'message' => $comment === null ? 'Comment removed' : 'Comment saved', 'comment' => $comment], 200);
     }
 
     public function itemFollow(Request $request)

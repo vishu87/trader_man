@@ -5,6 +5,7 @@ defineProps({
     subtitle: { type: String,  default: '' },
     size:     { type: String,  default: '' },   // 'sm' | '' | 'lg' | 'xl'
     top:      { type: Boolean, default: false }, // true = stack above the chart popup (a drawer opened from inside a modal)
+    away:     { type: Boolean, default: false }, // true = slid out of the way (still mounted, so a form keeps its values) — e.g. while picking a candle
 });
 
 const emit = defineEmits(['close']);
@@ -14,12 +15,12 @@ const emit = defineEmits(['close']);
     <teleport to="body">
         <!-- Overlay -->
         <transition name="fade-overlay">
-            <div v-if="show" class="aside-overlay" :class="{ 'aside-top': top }" @click="emit('close')"></div>
+            <div v-if="show" class="aside-overlay" :class="{ 'aside-top': top, 'aside-away': away }" @click="emit('close')"></div>
         </transition>
 
         <!-- Drawer -->
         <transition name="slide-aside">
-            <div v-if="show" :class="['aside-drawer', size ? `aside-${size}` : '', top ? 'aside-top' : '']">
+            <div v-if="show" :class="['aside-drawer', size ? `aside-${size}` : '', top ? 'aside-top' : '', away ? 'aside-away' : '']">
 
                 <!-- Header -->
                 <div class="aside-header">

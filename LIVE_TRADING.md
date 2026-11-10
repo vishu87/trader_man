@@ -162,15 +162,15 @@ POST  https://<your-site>/api/chartink/<secret>                ← the older for
 ```json
 {
   "success": true,
-  "message": "3 stock(s) received: 0 waiting for their candle, 3 skipped, 0 already stored from an earlier identical call",
+  "message": "3 stock(s) received: 0 waiting for their candle, 3 skipped, 0 ignored as repeats, 0 already stored from an earlier identical call",
   "received_at": "2026-11-10 16:17:00", "raw_id": 1,
   "alert_name": "RISH5-1", "scan_name": "Copy - Copy - Rish5-1", "triggered_at_sent": "4:16 pm",
-  "counts": {"stocks": 3, "new": 0, "skipped": 3, "duplicates": 0},
+  "counts": {"stocks": 3, "new": 0, "skipped": 3, "ignored": 0, "duplicates": 0},
   "entries": [
     {"position": 1, "received_as": "SYMBOL 1", "id": 1, "symbol": "SYMBOL 1", "exchange": "NSE", "alert_name": "RISH5-1",
      "scan_name": "Copy - Copy - Rish5-1", "trigger_price": 2500, "triggered_at": "2026-11-10 16:16:00",
      "sector": "100.2", "market_cap": "100.3", "rsi": 100.4, "close": 100.5, "column_used": "columns[0]",
-     "saved": true, "duplicate": false, "status": "skipped", "verdict": null, "reason": "not a valid stock symbol (\"SYMBOL 1\") — …"}
+     "saved": true, "duplicate": false, "ignored": false, "repeat_of": null, "status": "skipped", "verdict": null, "reason": "not a valid stock symbol (\"SYMBOL 1\") — …"}
   ]
 }
 ```
@@ -204,10 +204,21 @@ signal is skipped (`the … candle is not available from the broker`). The webho
 for the close and acts within seconds; after that the once-a-minute tick keeps the waiting signals going (at most about a minute
 late). Only one such process runs at a time (a lock file in `storage/framework/live_process.lock`).
 
-**Ignored** (decided at once, before the candle closes): a signal for a stock that already has an open or pending position
+**Many alerts, one scan name each.** Every signal stores its `alert_name` *and* its `scan_name`, so alerts from different ChartInk scans
+can be recorded side by side and analysed later (the Signals tab shows the scan name under the alert and has an alert filter). Only the
+alert names enabled in Live Config trade; the others are recorded as `skipped — … recorded only`.
+
+**Repeats are kept apart (the `ignored` field).** ChartInk fires a stock again every 5 minutes while the scan still matches it, so a
+repeat is stored with `ignored = 1` (status `ignored`, `repeat_of` = the signal it repeats) and is *not* part of the Signals list — it
+has its own **Ignored** tab, and the other tabs and counts leave it out. The *webhook* does this at once, before the engine sees it:
+a later signal for the same **alert + stock + day** is a repeat when the first one is still waiting, was bought, or was judged **Skip**
+(a final answer for the day), or when the alert is only recorded (not enabled). It is **not** a repeat when the first one expired or
+failed, or was skipped for the time of day / a missing price (the new one is a fresh chance), or on another day or under another alert.
+
+**Ignored by the engine** (decided at once, before the candle closes): a signal for a stock that already has an open or pending position
 (`already in the trade — extra buys follow the price`, or `an entry order for this stock is already placed`), or while an *earlier*
 signal for the same stock is still waiting (`signal #12 for this stock is already waiting for its entry`). An ignored signal is never
-judged or bought. A signal whose earlier sibling was *skipped* is not ignored — it is judged on its own.
+judged or bought. These are flagged `ignored = 1` too.
 
 **Stock not found.** The stock is looked up on **NSE first, then BSE** (the instrument lists are fetched once a day). A BSE-only
 stock is judged and traded on BSE (prices, candles, orders and the position all use BSE; the list shows an `NSE` / `BSE` tag).
@@ -500,7 +511,7 @@ time; averaging with ₹ > 0 needs max extra buys ≥ 1; green days needed canno
 | Table | One row is | Key columns |
 |---|---|---|
 | `raw_data_chartink` | one webhook call | `alert_name`, `raw_data` (JSON as received), `ip`, `received_at` |
-| `live_signals` | one stock in one alert | `alert_name`, `scan_name`, `exchange` (NSE/BSE), `symbol`, `trigger_price`, `sector`, `market_cap`, `alert_rsi`, `alert_close`, `triggered_at`, `received_at`, `status` (new/working/watching/enter/done/skipped/ignored/expired/failed), `verdict` (enter/watch/skip/nodata: the latest), `score`, `checked_candle`, `checked_at`, `checks`, `action` (entry/average), `reason`, `position_id`. Unique: alert + symbol + triggered_at |
+| `live_signals` | one stock in one alert | `alert_name`, `scan_name`, `ignored` (0/1: a repeat or a held stock, kept out of the main list), `repeat_of`, `exchange` (NSE/BSE), `symbol`, `trigger_price`, `sector`, `market_cap`, `alert_rsi`, `alert_close`, `triggered_at`, `received_at`, `status` (new/working/watching/enter/done/skipped/ignored/expired/failed), `verdict` (enter/watch/skip/nodata: the latest), `score`, `checked_candle`, `checked_at`, `checks`, `action` (entry/average), `reason`, `position_id`. Unique: alert + symbol + triggered_at |
 | `live_signal_checks` | one look at a signal | `signal_id`, `checked_at`, `candle_at`, `kind` (candle / recheck), `verdict`, `score`, `price` (candle close), `ltp`, `fails` (codes), `note`, `details` (JSON: RSI, VWAP distance, day move …) |
 | `live_positions` | one trade in one stock | `mode`, `status` (pending/open/closed/cancelled/failed), `qty`, `avg_price`, `invested`, `adds`, `sold_qty`, `exit_value`, `exit_price`, `exit_reason` (manual/stop/target/time_exit), `exit_requested_at` (the Exit button), `pnl`, `hold_until`, `last_price`, `opened_at`, `closed_at` |
 | `live_orders` | one order | `position_id`, `signal_id`, `side`, `kind` (entry/average/manual/stop/target/time_exit), `qty`, `order_type`, `price`, `status` (sending/open/complete/rejected/cancelled/unknown), `filled_qty`, `filled_price`, `broker_order_id`, `mode`, `message` |

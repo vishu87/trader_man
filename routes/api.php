@@ -41,6 +41,7 @@ Route::prefix('/watchlist')->group(function () {
     Route::post('/item/save',    [WatchlistController::class, 'itemSave']);
     Route::post('/item/delete',  [WatchlistController::class, 'itemDelete']);
     Route::post('/item/follow',  [WatchlistController::class, 'itemFollow']);
+    Route::post('/item/comment', [WatchlistController::class, 'itemComment']);
     Route::post('/item/prices',  [WatchlistController::class, 'itemPrices']);
     Route::post('/bulk-add',     [WatchlistController::class, 'bulkAdd']);
     Route::post('/ipo-upload',   [WatchlistController::class, 'ipoUpload']);

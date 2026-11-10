@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue';
+import { ref, computed, watch, onMounted, nextTick } from 'vue';
 import DBService from '@/Service/Utils/DBService.js';
 import { fmtNum, fmtPrice, fmtPct, fmtDate, todayString, pnlClass } from '@/Service/Utils/Format.js';
 import ListForm from '@/Includes/Watchlist/ListForm.vue';
@@ -91,7 +91,7 @@ const decorated = computed(() => items.value.map(i => decorate(i, maxLoss.value)
 const rows = computed(() => {
     const q = search.value.trim().toLowerCase();
     let list = typeof tab.value === 'number' ? decorated.value.filter(i => i.watchlist_id === tab.value) : decorated.value;
-    if (q) list = list.filter(i => i.symbol.toLowerCase().includes(q) || i.watchlist_name.toLowerCase().includes(q) || (i.name || '').toLowerCase().includes(q));
+    if (q) list = list.filter(i => i.symbol.toLowerCase().includes(q) || i.watchlist_name.toLowerCase().includes(q) || (i.name || '').toLowerCase().includes(q) || (i.comment || '').toLowerCase().includes(q));
     if (followFilter.value === 'followed') list = list.filter(i => i.follow);
     if (ratingFilter.value === 'none')     list = list.filter(i => !i.rating);
     else if (ratingFilter.value > 0)       list = list.filter(i => (i.rating || 0) >= ratingFilter.value);
@@ -189,6 +189,51 @@ function rate(i, stars) {
             alert(data.message);
             fetchData();
         }
+    });
+}
+
+// ─── Comment: free text under the symbol, edited in place ───────────
+// Click the text (or the speech-bubble button) to edit; it saves when you click away or press Ctrl/Cmd + Enter, Esc cancels.
+// Like the rating it belongs to the symbol, so every row of that symbol (in other watchlists) shows the same comment.
+const editingComment = ref(null);   // id of the row being edited
+const commentDraft   = ref('');
+
+function autosize(el) {
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight + 2, 600) + 'px';
+}
+
+function editComment(i) {
+    editingComment.value = i.id;
+    commentDraft.value   = i.comment || '';
+    nextTick(() => {
+        const el = document.getElementById('cmt-' + i.id);
+        if (!el) return;
+        el.focus();
+        el.setSelectionRange(el.value.length, el.value.length);
+        autosize(el);
+    });
+}
+
+function cancelComment() {
+    editingComment.value = null;   // saveComment() ignores the blur that follows
+}
+
+function saveComment(i) {
+    if (editingComment.value !== i.id) return;
+    const text = commentDraft.value.trim();
+    editingComment.value = null;
+    if (text === (i.comment || '')) return;   // nothing changed
+
+    items.value.forEach((r) => { if (r.exchange === i.exchange && r.symbol === i.symbol) r.comment = text || null; });
+    DBService.postData('/api/watchlist/item/comment', { symbol: i.symbol, exchange: i.exchange, comment: text }).then((data) => {
+        if (!data.success) {
+            alert(data.message);
+            fetchData();   // puts back what is stored
+            return;
+        }
+        items.value.forEach((r) => { if (r.exchange === i.exchange && r.symbol === i.symbol) r.comment = data.comment; });
     });
 }
 
@@ -374,7 +419,7 @@ const kiteChartUrl = (i) => `https://kite.zerodha.com/markets/ext/chart/web/ciq/
                             <th class="th-sort" :class="{ sorted: sortBy === 'follow' }" @click="sort('follow')" style="width:44px" title="Follow">
                                 <i class="bi" :class="sortBy === 'follow' ? sortIcon('follow') : 'bi-star'"></i>
                             </th>
-                            <th class="th-sort" :class="{ sorted: sortBy === 'symbol' }" @click="sort('symbol')" style="min-width:150px">
+                            <th class="th-sort" :class="{ sorted: sortBy === 'symbol' }" @click="sort('symbol')" style="min-width:220px">
                                 Symbol <i class="bi" :class="sortIcon('symbol')"></i>
                             </th>
                             <th v-if="tab === 'all'" class="th-sort" :class="{ sorted: sortBy === 'watchlist_name' }" @click="sort('watchlist_name')">
@@ -419,6 +464,15 @@ const kiteChartUrl = (i) => `https://kite.zerodha.com/markets/ext/chart/web/ciq/
                                     <span class="cell-primary mono">{{ i.symbol }}</span>
                                     <div v-if="i.name" class="cell-secondary">{{ i.name }}</div>
                                     <div class="cell-secondary mono" :class="{ 'text-primary': i.exchange !== 'NSE' }">{{ i.exchange }}:{{ i.symbol }}</div>
+                                    <template v-if="editingComment === i.id">
+                                        <textarea
+                                            :id="'cmt-' + i.id" v-model="commentDraft" class="wl-comment-edit" rows="2" maxlength="5000" placeholder="Write a comment…"
+                                            @input="autosize($event.target)" @blur="saveComment(i)" @keydown.esc.prevent="cancelComment"
+                                            @keydown.ctrl.enter.prevent="$event.target.blur()" @keydown.meta.enter.prevent="$event.target.blur()"
+                                        ></textarea>
+                                        <div class="cell-secondary">Click away or Ctrl + Enter to save · Esc to cancel</div>
+                                    </template>
+                                    <div v-else-if="i.comment" class="wl-comment" title="Click to edit" @click="editComment(i)">{{ i.comment }}</div>
                                 </td>
                                 <td v-if="tab === 'all'" style="font-size:13px">{{ i.watchlist_name }}</td>
                                 <td class="text-nowrap">
@@ -451,6 +505,7 @@ const kiteChartUrl = (i) => `https://kite.zerodha.com/markets/ext/chart/web/ciq/
                                     <span v-else class="text-muted" title="Never opened in the chart popup">—</span>
                                 </td>
                                 <td class="text-end text-nowrap">
+                                    <button class="tbl-icon-btn me-1" :class="{ 'has-comment': i.comment }" :title="i.comment ? 'Edit the comment' : 'Add a comment'" @click="editComment(i)"><i class="bi" :class="i.comment ? 'bi-chat-left-text-fill' : 'bi-chat-left-text'"></i></button>
                                     <button class="tbl-icon-btn me-1" title="Open charts — weekly + monthly" @click="openChart(i)"><i class="bi bi-bar-chart-line"></i></button>
                                     <a v-if="i.instrument_token" class="tbl-icon-btn me-1" :href="kiteChartUrl(i)" target="_blank" rel="noopener" title="Open chart on Kite">
                                         <i class="bi bi-graph-up"></i>

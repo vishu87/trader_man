@@ -420,6 +420,10 @@
 .aside-overlay.aside-top { z-index: 1400; }
 .aside-drawer.aside-top  { z-index: 1405; }
 
+// the drawer steps aside while a candle is being picked on a chart (it stays mounted, so its form keeps its values)
+.aside-overlay.aside-away { opacity: 0; pointer-events: none; }
+.aside-drawer.aside-away { transform: translateX(105%); visibility: hidden; pointer-events: none; transition: transform 0.2s ease, visibility 0s linear 0.2s; }
+
 .aside-header {
   display: flex;
   align-items: center;
@@ -1174,6 +1178,39 @@ a.tbl-icon-btn { text-decoration: none; }
 .tbl-icon-btn:disabled { opacity: 0.4; cursor: not-allowed; &:hover { background: #fff; color: #667085; border-color: #E7EBF1; } }
 .pf-star:disabled { opacity: 0.4; cursor: default; }
 
+// Comment under a watchlist symbol (full text, edited in place)
+.wl-comment {
+  margin-top: 5px;
+  max-width: 460px;
+  padding: 4px 9px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: #475467;
+  background: #FFF9EB;
+  border-left: 3px solid #F59F00;
+  border-radius: 0 6px 6px 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  cursor: text;
+  &:hover { background: #FFF3D6; }
+}
+.wl-comment-edit {
+  display: block;
+  margin-top: 5px;
+  width: 100%;
+  min-width: 280px;
+  max-width: 460px;
+  padding: 6px 9px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  border: 1px solid #2E6BFF;
+  border-radius: 6px;
+  outline: none;
+  resize: vertical;
+  box-shadow: 0 0 0 3px rgba(46, 107, 255, 0.12);
+}
+.tbl-icon-btn.has-comment { color: #F59F00; }
+
 // 1–5 star rating (watchlist rows, chart popup)
 .star-rating {
   display: inline-flex;
@@ -1274,6 +1311,38 @@ a.tbl-icon-btn { text-decoration: none; }
 .fib-levels { margin-top: 6px; }
 
 // the Fib button on a chart box when that symbol has levels drawn
+// Fibonacci editor: pick the low / high by clicking candles
+.fib-pick {
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border: 1px dashed #B7C4D9;
+  border-radius: 8px;
+  background: #F7FAFF;
+  .fib-pick-title { font-size: 12.5px; font-weight: 600; margin-bottom: 8px; color: #25324B; }
+  .fib-pick-info { display: flex; flex-direction: column; gap: 2px; margin: 8px 0 4px; font-size: 12px; color: #1B2A4A; }
+}
+.fib-pick-banner {
+  position: fixed;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1500;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px 10px 16px;
+  background: #0F1B33;
+  color: #fff;
+  border-radius: 12px;
+  box-shadow: 0 10px 36px rgba(10, 24, 52, 0.35);
+  font-size: 14px;
+  > i { font-size: 20px; color: #F59F00; }
+  small { display: block; opacity: 0.7; font-size: 12px; }
+  .btn-secondary-sm { white-space: nowrap; }
+}
+// while the Fibonacci editor waits for a click, the candles show a crosshair
+.chart-picking .chart-wrap, .chart-picking .chart-wrap * { cursor: crosshair !important; }
+
 .tbl-icon-btn.fib-on { color: #B7791F; background: #FFF6E0; }
 
 // ─── Trade Signals page ─────────────────────────────────────────────────

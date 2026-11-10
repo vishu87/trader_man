@@ -82,7 +82,9 @@ class SignalProcessor
 
     private function finish(LiveSignal $s, string $status, ?string $reason = null, ?string $action = null, ?int $positionId = null): void
     {
-        $s->update(['status' => $status, 'reason' => $reason !== null ? mb_substr($reason, 0, 190) : null, 'action' => $action, 'position_id' => $positionId, 'processed_at' => Clock::now()->toDateTimeString()]);
+        $u = ['status' => $status, 'reason' => $reason !== null ? mb_substr($reason, 0, 190) : null, 'action' => $action, 'position_id' => $positionId, 'processed_at' => Clock::now()->toDateTimeString()];
+        if ($status === 'ignored') $u['ignored'] = 1;   // ignored is also a field of its own: the lists leave these out
+        $s->update($u);
     }
 
     private function skip(LiveSignal $s, string $reason): void
@@ -100,17 +102,17 @@ class SignalProcessor
 
     private function ignore(LiveSignal $s): bool
     {
-        $why = null;
+        $why = null; $of = null;
         $pos = LivePosition::whereIn('status', ['pending', 'open'])->where('symbol', $s->symbol)->first();
         if ($pos) {
             $why = ($pos->status === 'pending' ? 'an entry order for this stock is already placed' : 'already in the trade') . ' (position #' . $pos->id . ') — extra buys follow the price, not new alerts';
         } else {
             $other = LiveSignal::where('symbol', $s->symbol)->where('id', '<', $s->id)->whereIn('status', ['new', 'working', 'watching', 'enter'])->orderBy('id')->first();
-            if ($other) $why = 'signal #' . $other->id . ' for this stock is already waiting for its entry';
+            if ($other) { $why = 'signal #' . $other->id . ' for this stock is already waiting for its entry'; $of = $other->id; }
         }
         if (!$why) return false;
 
-        return LiveSignal::where('id', $s->id)->where('status', 'new')->update(['status' => 'ignored', 'reason' => $why, 'processed_at' => Clock::now()->toDateTimeString()]) === 1;
+        return LiveSignal::where('id', $s->id)->where('status', 'new')->update(['status' => 'ignored', 'ignored' => 1, 'repeat_of' => $of, 'reason' => $why, 'processed_at' => Clock::now()->toDateTimeString()]) === 1;
     }
 
     // ─── expired: out of time ────────────────────────────────────────────────
