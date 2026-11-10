@@ -34,9 +34,9 @@ class CandleSyncService
     /**
      * Shell command for one sync run. $symbols: comma separated, or null for everything.
      * A run only fetches the days after what is already stored; $full downloads the whole history again
-     * (naming symbols does that too — it is the way to repair one).
+     * (naming symbols does that too — it is the way to repair one). $quick: named symbols only fetch what is new since the last stored day.
      */
-    public static function command(?string $symbols = null, bool $force = false, bool $full = false): string
+    public static function command(?string $symbols = null, bool $force = false, bool $full = false, bool $quick = false): string
     {
         $cmd = 'PYTHONWARNINGS=ignore ' . escapeshellarg(self::pythonBin()) . ' ' . escapeshellarg(self::script());
         if ($symbols) {
@@ -48,6 +48,9 @@ class CandleSyncService
         if ($full) {
             $cmd .= ' --full';
         }
+        if ($quick && $symbols && !$full) {
+            $cmd .= ' --incremental';   // named symbols, but only the days after the last stored one (fast: today's candle)
+        }
         return $cmd;
     }
 
@@ -58,7 +61,7 @@ class CandleSyncService
     }
 
     /** @return array{started: bool, message: string} */
-    public static function startInBackground(?string $symbols = null, bool $force = false): array
+    public static function startInBackground(?string $symbols = null, bool $force = false, bool $quick = false): array
     {
         if (self::isRunning()) {
             return ['started' => false, 'message' => 'A candle sync is already running'];
@@ -75,7 +78,7 @@ class CandleSyncService
         $log  = escapeshellarg(self::logFile());
 
         // run, then always release the lock — detached from the web request
-        $shell = self::command($symbols, $force) . ' > ' . $log . ' 2>&1; rm -f ' . $lock;
+        $shell = self::command($symbols, $force, false, $quick) . ' > ' . $log . ' 2>&1; rm -f ' . $lock;
         exec('nohup sh -c ' . escapeshellarg($shell) . ' > /dev/null 2>&1 &');
 
         return ['started' => true, 'message' => 'Candle sync started'];

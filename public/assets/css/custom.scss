@@ -1174,6 +1174,27 @@ a.tbl-icon-btn { text-decoration: none; }
 .tbl-icon-btn:disabled { opacity: 0.4; cursor: not-allowed; &:hover { background: #fff; color: #667085; border-color: #E7EBF1; } }
 .pf-star:disabled { opacity: 0.4; cursor: default; }
 
+// 1–5 star rating (watchlist rows, chart popup)
+.star-rating {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  &.is-disabled { opacity: 0.45; }
+}
+.star-rating-btn {
+  border: 0;
+  background: transparent;
+  padding: 1px 1px;
+  color: #C0C7D2;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  &.on { color: #F59F00; }
+  &.on.preview { color: #FAB005; }
+  &:disabled { cursor: default; }
+}
+.star-rating-lg .star-rating-btn { font-size: 17px; padding: 1px 2px; }
+
 // ─── Trade panel (in the chart popup) ───
 
 .trade-panel {

@@ -84,6 +84,7 @@ class WatchlistController extends Controller
                 // vs-buy %, distance to stop loss, status and position size are derived in the browser
                 // (resources/js/Service/Utils/Watchlist.js) so they update the moment a price is edited inline
                 'follow'           => (int) $i->follow,
+                'rating'           => $i->rating !== null ? (int) $i->rating : null,   // 1–5 stars, or null = not rated
                 'last_viewed'      => $viewed[$key] ?? null,
                 // null, or ['quantity' => total held, 'buckets' => ['Core (250)', ...]]
                 'in_portfolio'     => $owned[$key] ?? null,

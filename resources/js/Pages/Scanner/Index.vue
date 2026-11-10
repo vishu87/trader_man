@@ -176,8 +176,8 @@ const skipList = computed(() => result.value ? Object.entries(result.value.skips
 
 <template>
     <PageHeader
-        title="Scanner Signals"
-        subtitle="Replay the scanner's signals on 5-minute candles — daily profit and loss under rules you choose"
+        title="Old Signals"
+        subtitle="Old Chartink signals replayed on 5-minute candles — daily profit and loss under rules you choose (backtest only)"
         :show-search="false"
     >
         <template #actions>

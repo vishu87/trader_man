@@ -287,4 +287,22 @@ class TradesController extends Controller
 
         return $this->ok('Deleted');
     }
+
+    /**
+     * Refresh the candles of the ACTIVE trades' symbols only (forced, and only the days after the last stored one — today's candle
+     * while the market is open). For checking the day's candles between the full runs.
+     */
+    public function sync(Request $request)
+    {
+        User::AuthenticateUser($request->header('apiToken'));
+
+        $symbols = Trade::where('status', 'active')->pluck('symbol')->unique()->values()->all();
+        if (!$symbols) return $this->fail('There are no active trades to sync');
+
+        $tok = \App\Services\KiteService::syncToken();
+        if (!$tok['ok']) return $this->fail($tok['message']);
+
+        $result = \App\Services\CandleSyncService::startInBackground(implode(',', $symbols), true, true);
+        return Response::json(['success' => $result['started'], 'message' => $result['started'] ? 'Syncing ' . count($symbols) . ' symbol' . (count($symbols) === 1 ? '' : 's') : $result['message'], 'symbols' => count($symbols)], 200);
+    }
 }

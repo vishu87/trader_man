@@ -481,6 +481,7 @@ def main():
     parser.add_argument("--list", action="store_true", help="only list the symbols that would be synced")
     parser.add_argument("--force", action="store_true", help="refetch even symbols that are already up to date")
     parser.add_argument("--full", action="store_true", help="download the whole history again instead of only the days after the last stored one")
+    parser.add_argument("--incremental", action="store_true", help="with --symbol: refetch those symbols but only the days after the last stored one (quick refresh of today's candle), not the whole history")
     args = parser.parse_args()
 
     env = load_env(os.path.join(ROOT, ".env"))
@@ -496,7 +497,7 @@ def main():
     # naming symbols is a deliberate refetch — it never skips
     force = args.force or bool(args.symbol)
     # ... and so is a full download: it is the way to repair a symbol, while a general run only adds what is new
-    full = args.full or bool(args.symbol)
+    full = args.full or (bool(args.symbol) and not args.incremental)
     now = datetime.datetime.now()
     state = load_sync_state(db)
 

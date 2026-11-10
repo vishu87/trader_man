@@ -14,6 +14,7 @@ use App\Http\Controllers\TradesController;
 use App\Http\Controllers\ZerodhaTradesController;
 use App\Http\Controllers\ScannerController;
 use App\Http\Controllers\LiveController;
+use App\Http\Controllers\StockScannerController;
 use App\Http\Controllers\LiveWebhookController;
 Route::post('/change-password',[UserController::class,'changePassword']);
 
@@ -49,6 +50,7 @@ Route::prefix('/charts')->group(function () {
     Route::post('/symbols',     [ChartsController::class, 'symbols']);
     Route::post('/candles',     [ChartsController::class, 'candles']);
     Route::post('/follow',      [ChartsController::class, 'follow']);
+    Route::post('/rate',        [ChartsController::class, 'rate']);
     Route::post('/viewed',      [ChartsController::class, 'viewed']);
     Route::post('/remove',      [ChartsController::class, 'remove']);
     Route::post('/sync',        [ChartsController::class, 'sync']);
@@ -84,6 +86,13 @@ Route::prefix('/trades')->group(function () {
     Route::post('/delete',        [TradesController::class, 'delete']);
     Route::post('/action/save',   [TradesController::class, 'actionSave']);
     Route::post('/action/delete', [TradesController::class, 'actionDelete']);
+    Route::post('/sync',          [TradesController::class, 'sync']);
+});
+
+Route::prefix('/stock-scanner')->group(function () {
+    Route::post('/overview', [StockScannerController::class, 'overview']);
+    Route::post('/run',      [StockScannerController::class, 'run']);
+    Route::post('/check',    [StockScannerController::class, 'check']);
 });
 
 Route::prefix('/zerodha-trades')->group(function () {

@@ -72,6 +72,12 @@ class ChartsController extends Controller
         foreach ($holdings->where('follow', 1) as $h) $followed[$h->exchange . ':' . $h->zerodha_symbol] = true;
         foreach ($items->where('follow', 1) as $i)    $followed[$i->exchange . ':' . $i->symbol] = true;
 
+        // the star rating lives on watchlist rows; a symbol in several lists shows the highest one
+        $ratings = [];
+        foreach ($items as $i) {
+            if ($i->rating !== null) $ratings[$i->exchange . ':' . $i->symbol] = max($ratings[$i->exchange . ':' . $i->symbol] ?? 0, (int) $i->rating);
+        }
+
         // where each symbol lives. A chart can only be removed from here when it is in a watchlist and in NO portfolio bucket
         // (any holding row counts — owned, tracking-only or an empty placeholder — because the chart would simply stay visible).
         $in_portfolio = [];
@@ -122,7 +128,7 @@ class ChartsController extends Controller
         $stored = CandleStats::forSymbols(array_values($picked));
         $fibs   = FibService::chartLines(array_values($picked));   // shown Fibonacci swings → price lines per symbol
 
-        $out = collect($picked)->map(function ($p, $key) use ($marks, $fibs, $stored, $followed, $in_portfolio, $in_watchlists, $tokens) {
+        $out = collect($picked)->map(function ($p, $key) use ($marks, $fibs, $stored, $followed, $ratings, $in_portfolio, $in_watchlists, $tokens) {
             return [
                 'key'        => $key,
                 'exchange'   => $p['exchange'],
@@ -130,6 +136,7 @@ class ChartsController extends Controller
                 'marks'      => $marks[$key] ?? [],
                 'fibs'       => $fibs[$key] ?? [],
                 'followed'   => isset($followed[$key]),
+                'rating'     => $ratings[$key] ?? null,
                 'instrument_token' => $tokens[$key] ?? null,
                 'watchlists' => array_values($in_watchlists[$key] ?? []),
                 'in_portfolio' => isset($in_portfolio[$key]),
@@ -230,6 +237,35 @@ class ChartsController extends Controller
     // ─── API: follow / unfollow from a chart ─────────────────────────────────
 
     /**
+     * Give a symbol 1–5 stars (0 clears it), from the watchlist or its chart. The rating belongs to the symbol, so it is set on
+     * every watchlist row it has — the same way follow is — and a symbol that is in no watchlist cannot be rated.
+     */
+    public function rate(Request $request)
+    {
+        User::AuthenticateUser($request->header('apiToken'));
+
+        $validator = Validator::make($request->all(), [
+            'symbol'   => 'required|string|max:50',
+            'exchange' => 'nullable|in:NSE,BSE',
+            'rating'   => 'required|integer|between:0,5',
+        ]);
+        if (!$validator->passes()) {
+            return Response::json(['success' => false, 'message' => $validator->errors()->first()], 200);
+        }
+
+        $exchange = $request->exchange ?: 'NSE';
+        $symbol   = strtoupper(trim($request->symbol));
+        $rating   = (int) $request->rating ?: null;
+
+        $count = WatchlistItem::where('exchange', $exchange)->where('symbol', $symbol)->update(['rating' => $rating, 'updated_at' => now()]);
+        if ($count === 0) {
+            return Response::json(['success' => false, 'message' => "{$exchange}:{$symbol} is not in any watchlist — add it to a watchlist to rate it"], 200);
+        }
+
+        return Response::json(['success' => true, 'message' => $rating ? "Rated {$rating} / 5" : 'Rating cleared', 'rating' => $rating], 200);
+    }
+
+    /**
      * Star or unstar a symbol straight from its chart. A symbol can sit in several portfolio buckets and
      * watchlists, so the flag is set on every one of them — that is what keeps "followed" consistent.
      */
@@ -308,7 +344,8 @@ class ChartsController extends Controller
         $tok = \App\Services\KiteService::syncToken();   // the python sync reads the token from app_settings: make it the newest one
         if (!$tok['ok']) return Response::json(['success' => false, 'message' => $tok['message']], 200);
 
-        $result = CandleSyncService::startInBackground($symbol, $request->boolean('force'));
+        // quick = a named symbol, only the days after its last stored one (the chart popup's Sync: today's candle, a few seconds)
+        $result = CandleSyncService::startInBackground($symbol, $request->boolean('force'), $symbol !== null && $request->boolean('quick'));
 
         return Response::json(['success' => $result['started'], 'message' => $result['message']], 200);
     }

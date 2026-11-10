@@ -124,6 +124,9 @@ CREATE TABLE `stock_candles` (
 ALTER TABLE `portfolio_holdings` ADD `follow` TINYINT(1) NOT NULL DEFAULT 0 AFTER `is_tracking`;
 ALTER TABLE `watchlist_items` ADD `follow` TINYINT(1) NOT NULL DEFAULT 0 AFTER `stop_loss`;
 
+-- Your own star rating of a watchlist symbol (1 = weak … 5 = best); NULL = not rated. Set from the Watchlist list or the chart popup.
+ALTER TABLE `watchlist_items` ADD `rating` TINYINT NULL DEFAULT NULL AFTER `follow`;
+
 -- Candle sync bookkeeping: when each symbol was last synced SUCCESSFULLY (a general run skips symbols that are
 -- already fresh; a symbol-specific run always refetches) and why the last attempt failed, if it did.
 CREATE TABLE `stock_candle_sync` (

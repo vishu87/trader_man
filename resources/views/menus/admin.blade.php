@@ -109,9 +109,9 @@
 <div class="nav-section-header">Scanner</div>
 <ul class="nav-list">
     <x-menu-item
-        title="Scanner Signals"
-        href="{{ url('/scanner') }}"
-        :active="isset($sidebar) && $sidebar == 'scanner'">
+        title="Stock Scanner"
+        href="{{ url('/stock-scanner') }}"
+        :active="isset($sidebar) && $sidebar == 'stock-scanner'">
         <x-slot name="icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
                  stroke-linecap="round" stroke-linejoin="round">
@@ -125,7 +125,7 @@
 </ul>
 
 {{-- Live trading --}}
-<div class="nav-section-header">Live Trading</div>
+<div class="nav-section-header">Live Chartink</div>
 <ul class="nav-list">
     <x-menu-item
         title="Live Signals"
@@ -153,6 +153,20 @@
                 <line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/>
                 <line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/>
                 <line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>
+            </svg>
+        </x-slot>
+    </x-menu-item>
+    <x-menu-item
+        title="Old Signals"
+        href="{{ url('/scanner') }}"
+        :active="isset($sidebar) && $sidebar == 'scanner'">
+        <x-slot name="icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                 stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="7"/>
+                <path d="M21 21l-4.3-4.3"/>
+                <path d="M8 11h6"/>
+                <path d="M11 8v6"/>
             </svg>
         </x-slot>
     </x-menu-item>

@@ -13,6 +13,7 @@ use App\Http\Controllers\TradesController;
 use App\Http\Controllers\ZerodhaTradesController;
 use App\Http\Controllers\ScannerController;
 use App\Http\Controllers\LiveController;
+use App\Http\Controllers\StockScannerController;
 
 
 Route::get('/', [UserController::class, 'login'])->name('login');
@@ -35,6 +36,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/trades', [TradesController::class, 'index']);
     Route::get('/zerodha-trades', [ZerodhaTradesController::class, 'index']);
     Route::get('/scanner', [ScannerController::class, 'index']);
+    Route::get('/stock-scanner', [StockScannerController::class, 'index']);
     Route::get('/live', [LiveController::class, 'signalsPage']);
     Route::get('/live-config', [LiveController::class, 'configPage']);
 });

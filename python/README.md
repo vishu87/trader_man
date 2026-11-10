@@ -7,7 +7,7 @@ Symbols = portfolio holdings + watchlist items + symbols in a live paper trade. 
 **Incremental:** a symbol that already has candles only has the days after its last stored candle fetched (plus 10 days of
 overlap); weekly / monthly candles and indicators are rebuilt from the stored history joined with the new days. If the overlap
 shows Kite's recent prices no longer match what is stored (a split or bonus adjusted them), that symbol is downloaded in full.
-`--symbol` and `--full` always download the whole history.
+`--symbol` and `--full` always download the whole history. `--symbol X --incremental` refetches that symbol but only the days after its last stored one (a few seconds, includes today's forming candle) — this is what the chart popup's Sync button runs.
 
 ## One-time setup (on every machine that runs it)
 

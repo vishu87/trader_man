@@ -5,6 +5,7 @@ import { fmtNum, fmtPrice, fmtPct, fmtDate, pnlClass } from '@/Service/Utils/For
 import TradeForm from '@/Includes/Trades/TradeForm.vue';
 import ActionForm from '@/Includes/Trades/ActionForm.vue';
 import ChartPopup from '@/Includes/Charts/ChartPopup.vue';
+import { useCandleSync } from '@/Service/Utils/CandleSync.js';
 
 // Real trades: a stock, and every buy and sell you made in it. What is still held is valued at the live price (unrealised);
 // what was sold is realised. Active trades are the ones you are in; archived ones are done with.
@@ -35,7 +36,12 @@ function fetchData(refresh = false) {
     });
 }
 
-onMounted(() => fetchData());
+onMounted(() => { fetchData(); candleSync.resume(); });
+
+// Sync candles for the ACTIVE trades only (forced; just the days after the last stored one, so a few seconds) — to look at today's
+// candle between the full runs. The prices and profit on this page refresh when it is done.
+const candleSync = useCandleSync(() => fetchData(true));
+const activeCount = computed(() => trades.value.filter(t => t.status === 'active').length);
 
 // ─── Showing ─────────────────────────────────────────────────────────
 
@@ -137,6 +143,11 @@ const COLS = 11;
         @search="(q) => search = q"
     >
         <template #actions>
+            <button class="btn-secondary-sm" :disabled="candleSync.syncing.value || !activeCount" :title="'Fetch the latest candles (today\'s too) for the ' + activeCount + ' symbol' + (activeCount === 1 ? '' : 's') + ' of your active trades only'" @click="candleSync.start('/api/trades/sync')">
+                <span v-if="candleSync.syncing.value" class="spinner-border spinner-border-sm"></span>
+                <i v-else class="bi bi-cloud-download"></i>
+                {{ candleSync.syncing.value ? 'Syncing…' : 'Sync candles' }}
+            </button>
             <button class="btn-secondary-sm" :disabled="loading" @click="fetchData(true)">
                 <span v-if="loading" class="spinner-border spinner-border-sm"></span>
                 <i v-else class="bi bi-arrow-clockwise"></i>
@@ -150,6 +161,11 @@ const COLS = 11;
 
     <div class="page-canvas">
 
+        <div v-if="candleSync.note.value" class="pf-alert" :class="candleSync.noteOk.value ? 'pf-alert-ok' : 'pf-alert-bad'">
+            <i class="bi" :class="candleSync.noteOk.value ? 'bi-check-circle-fill' : 'bi-x-circle-fill'"></i>
+            <div class="flex-grow-1">Candle sync (active trades): {{ candleSync.note.value }}</div>
+            <button class="tbl-icon-btn" @click="candleSync.note.value = ''"><i class="bi bi-x-lg"></i></button>
+        </div>
         <div v-if="ltpError" class="pf-alert">
             <i class="bi bi-exclamation-triangle-fill"></i>
             Live prices unavailable — using the last stored close where there is one. {{ ltpError }}

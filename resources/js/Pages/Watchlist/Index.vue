@@ -8,6 +8,7 @@ import BulkAddAside from '@/Includes/Watchlist/BulkAddAside.vue';
 import RiskSettings from '@/Includes/Watchlist/RiskSettings.vue';
 import IpoUploadAside from '@/Includes/Watchlist/IpoUploadAside.vue';
 import ChartPopup from '@/Includes/Charts/ChartPopup.vue';
+import StarRating from '@/Components/Common/StarRating.vue';
 import { decorate } from '@/Service/Utils/Watchlist.js';
 
 const loading    = ref(false);
@@ -21,6 +22,8 @@ const search = ref('');
 
 // 'all' | 'followed'
 const followFilter = ref('all');
+// 0 = any, 1–5 = at least that many stars, 'none' = not rated yet
+const ratingFilter = ref(0);
 
 const sortBy  = ref('symbol');
 const sortDir = ref('asc');
@@ -90,6 +93,8 @@ const rows = computed(() => {
     let list = typeof tab.value === 'number' ? decorated.value.filter(i => i.watchlist_id === tab.value) : decorated.value;
     if (q) list = list.filter(i => i.symbol.toLowerCase().includes(q) || i.watchlist_name.toLowerCase().includes(q) || (i.name || '').toLowerCase().includes(q));
     if (followFilter.value === 'followed') list = list.filter(i => i.follow);
+    if (ratingFilter.value === 'none')     list = list.filter(i => !i.rating);
+    else if (ratingFilter.value > 0)       list = list.filter(i => (i.rating || 0) >= ratingFilter.value);
     if (viewFilter.value === 'not_today')  list = list.filter(i => i.last_viewed !== today.value);
     if (viewFilter.value === 'today')      list = list.filter(i => i.last_viewed === today.value);
 
@@ -113,7 +118,7 @@ function sort(col) {
         sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc';
     } else {
         sortBy.value  = col;
-        sortDir.value = (col === 'symbol' || col === 'watchlist_name') ? 'asc' : 'desc';   // follow: starred first (desc)
+        sortDir.value = (col === 'symbol' || col === 'watchlist_name') ? 'asc' : 'desc';   // follow / rating: best first (desc)
     }
 }
 
@@ -168,6 +173,18 @@ function toggleFollow(i) {
     const follow = i.follow ? 0 : 1;
     i.follow = follow;
     DBService.postData('/api/watchlist/item/follow', { ids: [i.id], follow }).then((data) => {
+        if (!data.success) {
+            alert(data.message);
+            fetchData();
+        }
+    });
+}
+
+// Rate a symbol 1–5 (0 clears it). The rating belongs to the symbol, so every row of it (in other watchlists) changes too;
+// the server's answer decides, a refetch puts the old value back if the save fails.
+function rate(i, stars) {
+    items.value.forEach((r) => { if (r.exchange === i.exchange && r.symbol === i.symbol) r.rating = stars || null; });
+    DBService.postData('/api/charts/rate', { symbol: i.symbol, exchange: i.exchange, rating: stars }).then((data) => {
         if (!data.success) {
             alert(data.message);
             fetchData();
@@ -252,6 +269,10 @@ function onChartFollowed({ exchange, symbol, follow }) {
     items.value.forEach((r) => { if (r.exchange === exchange && r.symbol === symbol) r.follow = follow; });
 }
 
+function onChartRated({ exchange, symbol, rating }) {
+    items.value.forEach((r) => { if (r.exchange === exchange && r.symbol === symbol) r.rating = rating || null; });
+}
+
 // ─── Links ───────────────────────────────────────────────────────────
 
 const chartsUrl = computed(() => base_url + '/charts?watchlist=' + (typeof tab.value === 'number' ? tab.value : 'all'));
@@ -323,6 +344,14 @@ const kiteChartUrl = (i) => `https://kite.zerodha.com/markets/ext/chart/web/ciq/
                         <option value="all">All symbols</option>
                         <option value="followed">Followed only</option>
                     </select>
+                    <select v-model="ratingFilter" class="form-select form-select-sm" style="width:auto" title="Filter by your star rating">
+                        <option :value="0">Any rating</option>
+                        <option :value="5">5 stars</option>
+                        <option :value="4">4 stars +</option>
+                        <option :value="3">3 stars +</option>
+                        <option :value="2">2 stars +</option>
+                        <option value="none">Not rated</option>
+                    </select>
                     <a class="btn-secondary-sm" :href="chartsUrl" target="_blank" rel="noopener">
                         <i class="bi bi-bar-chart-line"></i> Charts
                     </a>
@@ -351,6 +380,9 @@ const kiteChartUrl = (i) => `https://kite.zerodha.com/markets/ext/chart/web/ciq/
                             <th v-if="tab === 'all'" class="th-sort" :class="{ sorted: sortBy === 'watchlist_name' }" @click="sort('watchlist_name')">
                                 Watchlist <i class="bi" :class="sortIcon('watchlist_name')"></i>
                             </th>
+                            <th class="th-sort" :class="{ sorted: sortBy === 'rating' }" @click="sort('rating')" style="min-width:104px" title="Your star rating (click a star in a row to set it)">
+                                Rating <i class="bi" :class="sortIcon('rating')"></i>
+                            </th>
                             <th class="th-sort" :class="{ sorted: sortBy === 'listing_date' }" @click="sort('listing_date')" style="min-width:130px" title="IPO listing date">
                                 Listing Date <i class="bi" :class="sortIcon('listing_date')"></i>
                             </th>
@@ -367,12 +399,12 @@ const kiteChartUrl = (i) => `https://kite.zerodha.com/markets/ext/chart/web/ciq/
                     </thead>
                     <tbody>
                         <tr v-if="loading && !items.length">
-                            <td :colspan="tab === 'all' ? 9 : 8" class="text-center py-5 text-muted">
+                            <td :colspan="tab === 'all' ? 10 : 9" class="text-center py-5 text-muted">
                                 <span class="spinner-border spinner-border-sm me-2"></span> Loading…
                             </td>
                         </tr>
                         <tr v-else-if="!rows.length">
-                            <td :colspan="tab === 'all' ? 9 : 8" class="text-center py-5 text-muted">
+                            <td :colspan="tab === 'all' ? 10 : 9" class="text-center py-5 text-muted">
                                 {{ search ? 'No symbols match your search' : (watchlists.length ? 'No symbols yet — use Bulk Add or Add Symbol' : 'Create a watchlist to get started') }}
                             </td>
                         </tr>
@@ -389,6 +421,9 @@ const kiteChartUrl = (i) => `https://kite.zerodha.com/markets/ext/chart/web/ciq/
                                     <div class="cell-secondary mono" :class="{ 'text-primary': i.exchange !== 'NSE' }">{{ i.exchange }}:{{ i.symbol }}</div>
                                 </td>
                                 <td v-if="tab === 'all'" style="font-size:13px">{{ i.watchlist_name }}</td>
+                                <td class="text-nowrap">
+                                    <StarRating :model-value="i.rating" @rate="(n) => rate(i, n)" />
+                                </td>
                                 <td class="text-nowrap" style="font-size:13px">
                                     <template v-if="i.listing_date">
                                         {{ fmtDate(i.listing_date) }}
@@ -434,7 +469,7 @@ const kiteChartUrl = (i) => `https://kite.zerodha.com/markets/ext/chart/web/ciq/
 
     <IpoUploadAside :show="showIpoUpload" :watchlist_id="activeList ? activeList.id : ''" @close="showIpoUpload = false" @uploaded="fetchData()" />
 
-    <ChartPopup :show="showChartPopup" :items="popupItems" :start-index="popupStart" @close="showChartPopup = false" @viewed="onChartViewed" @followed="onChartFollowed" />
+    <ChartPopup :show="showChartPopup" :items="popupItems" :start-index="popupStart" @close="showChartPopup = false" @viewed="onChartViewed" @followed="onChartFollowed" @rated="onChartRated" />
 
     <RiskSettings :show="showRisk" :max-loss="maxLoss" @close="showRisk = false" @saved="(v) => maxLoss = v" />
 
