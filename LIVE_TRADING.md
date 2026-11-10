@@ -147,13 +147,37 @@ POST  https://<your-site>/api/chartink/<secret>                ← the older for
 
 1. `raw_data_chartink` — the call exactly as received (JSON), the sender's IP and the time received. Always written, even for
    alerts that will be ignored.
-2. `live_signals` — one row per stock. A symbol must look like `A–Z 0–9 & - . _` (≤ 50 characters, no spaces — so placeholder text
-   such as `SYMBOL 1, SYMBOL 2` is ignored) and the call must have an `alert_name`, otherwise that stock is ignored.
+2. `live_signals` — one row per stock, **always**: nothing in a call silently disappears. A symbol must look like `A–Z 0–9 & - . _`
+   (≤ 50 characters, no spaces). A stock that is not a valid symbol (ChartInk's test data `SYMBOL 1, SYMBOL 2`) or a call with no
+   `alert_name` is still saved — as **skipped**, with the reason — so it shows in the Signals tab. The alert is identified by
+   `alert_name` (`RISH5-1`); `scan_name` ("Copy - Copy - Rish5-1") is stored only for reference and never decides what trades.
    * **Idempotent:** a unique key on *alert name + symbol + fired-at time* means a repeated delivery of the same alert creates
      no second signal.
    * Stored as **skipped** straight away (with the reason) when the alert name is not in the enabled list, or when it is older
      than `max_alert_age_minutes` (default 5) on arrival.
    * Otherwise stored as **new**.
+**The response** shows exactly what was stored, so a call can be checked from ChartInk's test button or `curl` without opening the database
+(JSON, status 200; wrong key → `404 {"success":false,"message":"Not found"}`):
+
+```json
+{
+  "success": true,
+  "message": "3 stock(s) received: 0 waiting for their candle, 3 skipped, 0 already stored from an earlier identical call",
+  "received_at": "2026-11-10 16:17:00", "raw_id": 1,
+  "alert_name": "RISH5-1", "scan_name": "Copy - Copy - Rish5-1", "triggered_at_sent": "4:16 pm",
+  "counts": {"stocks": 3, "new": 0, "skipped": 3, "duplicates": 0},
+  "entries": [
+    {"position": 1, "received_as": "SYMBOL 1", "id": 1, "symbol": "SYMBOL 1", "exchange": "NSE", "alert_name": "RISH5-1",
+     "scan_name": "Copy - Copy - Rish5-1", "trigger_price": 2500, "triggered_at": "2026-11-10 16:16:00",
+     "sector": "100.2", "market_cap": "100.3", "rsi": 100.4, "close": 100.5, "column_used": "columns[0]",
+     "saved": true, "duplicate": false, "status": "skipped", "verdict": null, "reason": "not a valid stock symbol (\"SYMBOL 1\") — …"}
+  ]
+}
+```
+
+`column_used` says which entry of `columns` was matched to the stock; `duplicate: true` means the same alert was already stored (the entry
+then shows that earlier row as it stands now, including its verdict).
+
 3. If at least one new signal was stored, `php artisan live:process-signals` is started in the background (`nohup`, output in
    `storage/logs/live_process.log`) so the webhook answers ChartInk immediately. The webhook itself never talks to the broker.
 
