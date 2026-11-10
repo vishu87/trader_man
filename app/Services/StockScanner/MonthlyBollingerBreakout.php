@@ -16,7 +16,7 @@ namespace App\Services\StockScanner;
  *
  * Not pass / fail: every rule earns partial credit for a near miss (see each rule's detail), and the points add up to a 0-100 SCORE.
  * Every rule fully met = 100. The page shows the symbols at or above a minimum score (80 by default).
- * Settings: the volume multiple and the RSI flexibility (points). Pure — takes the monthly candles, returns the score and the numbers behind it.
+ * The rules are fixed (no settings). Pure — takes the monthly candles, returns the score and the numbers behind it.
  */
 class MonthlyBollingerBreakout
 {
@@ -33,12 +33,10 @@ class MonthlyBollingerBreakout
     const DEFAULT_VOLUME_X = 1.5;
     const DEFAULT_RSI_FLEX = 0;
 
-    /** The two settings, cleaned: out-of-range or missing values fall back to the defaults. */
-    public static function normalize(array $in): array
+    /** The rules are FIXED (this is a first-pass scan, nothing is ordered from it): whatever is passed in, the defaults are used. */
+    public static function normalize(array $in = []): array
     {
-        $vol = isset($in['volume_x']) && is_numeric($in['volume_x']) ? (float) $in['volume_x'] : self::DEFAULT_VOLUME_X;
-        $flex = isset($in['rsi_flex']) && is_numeric($in['rsi_flex']) ? (float) $in['rsi_flex'] : self::DEFAULT_RSI_FLEX;
-        return ['volume_x' => min(max($vol, 0.5), 20.0), 'rsi_flex' => min(max($flex, 0.0), 30.0)];
+        return ['volume_x' => self::DEFAULT_VOLUME_X, 'rsi_flex' => self::DEFAULT_RSI_FLEX];
     }
 
     public static function describe(): array
@@ -52,14 +50,11 @@ class MonthlyBollingerBreakout
             'rules' => [
                 '25 points — The reference candle is green and closed above its upper Bollinger band (20, 2). It is the current month, or up to ' . self::MAX_AGE . ' months back. (Above the band: most of the points; green: the rest. Closing up to 3% under the band keeps a little.)',
                 '20 points — For the ' . self::QUIET_MONTHS . ' months before it, no candle closed above the upper band. (Each month that did costs ' . (20 / self::QUIET_MONTHS) . ' points.)',
-                '20 points — Its RSI(9) is the highest of all the earlier months, and of the months after it (if any). (Within the RSI flexibility = full points; every point below that costs 2, so 10 points short = none.)',
+                '20 points — Its RSI(9) is the highest of all the earlier months, and of the months after it (if any). (Every RSI point below the highest costs 2 points, so 10 points short = none.)',
                 '20 points — RSI(9)\'s 3-month average crossed above its 21-month average within the ' . self::CROSS_WINDOW . ' months up to it and is above it on that candle. (Above it but crossed earlier: 12 points; crossed in the window but now below: 5.)',
-                '15 points — Its volume is above the average of the previous ' . self::VOL_LOOKBACK . ' months by the volume multiple. (Scales from 1× the average = none up to the multiple = full.)',
+                '15 points — Its volume is at least ' . self::DEFAULT_VOLUME_X . '× the average of the previous ' . self::VOL_LOOKBACK . ' months. (Scales from 1× the average = none up to ' . self::DEFAULT_VOLUME_X . '× = full.)',
             ],
-            'params' => [
-                ['key' => 'volume_x', 'label' => 'Volume at least', 'suffix' => '× the 20-month average', 'default' => self::DEFAULT_VOLUME_X, 'min' => 0.5, 'max' => 20, 'step' => 0.1],
-                ['key' => 'rsi_flex', 'label' => 'RSI may be below the highest by up to', 'suffix' => 'points', 'default' => self::DEFAULT_RSI_FLEX, 'min' => 0, 'max' => 30, 'step' => 0.5],
-            ],
+            'params' => [],   // fixed rules: nothing to set
         ];
     }
 
