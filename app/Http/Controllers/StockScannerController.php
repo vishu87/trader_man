@@ -47,7 +47,7 @@ class StockScannerController extends Controller
         if (!$class) return $this->fail('Unknown scanner');
 
         $list = $request->watchlist_id ?: 'all';
-        $out  = StockScanner::run($class, $list);
+        $out  = StockScanner::run($class, $list, $class::normalize($request->all()));
 
         return Response::json(['success' => true, 'ran_at' => now()->toDateTimeString(), 'freshness' => StockScanner::freshness(StockScanner::universe($list))] + $out, 200);
     }
@@ -64,6 +64,6 @@ class StockScannerController extends Controller
         if (!preg_match('/^[A-Z0-9&\-\._ ]{1,50}$/', $symbol)) return $this->fail('Enter a trading symbol, like INFY');
         $exchange = $request->exchange === 'BSE' ? 'BSE' : 'NSE';
 
-        return Response::json(['success' => true, 'exchange' => $exchange, 'symbol' => $symbol] + StockScanner::check($class, $exchange, $symbol), 200);
+        return Response::json(['success' => true, 'exchange' => $exchange, 'symbol' => $symbol] + StockScanner::check($class, $exchange, $symbol, $class::normalize($request->all())), 200);
     }
 }

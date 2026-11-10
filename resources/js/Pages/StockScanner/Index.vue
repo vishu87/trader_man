@@ -16,15 +16,22 @@ const result    = ref(null);       // the last run: { results, scanned, no_data,
 const search    = ref('');
 const ratingFilter = ref(0);       // 0 = any, 1–5 = at least that many stars, 'none' = not rated
 const showRules = ref(false);
+const params    = ref({});           // the scanner's own settings (volume multiple, RSI flexibility), by key
 
 const scanner = computed(() => overview.value ? overview.value.scanners.find(s => s.key === scannerKey.value) : null);
 const fresh   = computed(() => (result.value && result.value.freshness) || (overview.value && overview.value.freshness) || null);
+
+function resetParams() {
+    const p = {};
+    (scanner.value ? scanner.value.params : []).forEach((x) => { p[x.key] = x.default; });
+    params.value = p;
+}
 
 function load() {
     return DBService.postData('/api/stock-scanner/overview', {}).then((d) => {
         if (!d.success) { alert(d.message); return; }
         overview.value = d;
-        if (!scannerKey.value && d.scanners.length) scannerKey.value = d.scanners[0].key;
+        if (!scannerKey.value && d.scanners.length) { scannerKey.value = d.scanners[0].key; resetParams(); }
     });
 }
 
@@ -34,7 +41,7 @@ onMounted(() => { load(); candleSync.resume(); });
 function run() {
     if (!scannerKey.value || running.value) return;
     running.value = true;
-    DBService.postData('/api/stock-scanner/run', { scanner: scannerKey.value, watchlist_id: listId.value }).then((d) => {
+    DBService.postData('/api/stock-scanner/run', { scanner: scannerKey.value, watchlist_id: listId.value, ...params.value }).then((d) => {
         running.value = false;
         if (!d.success) { alert(d.message); return; }
         result.value = d;
@@ -71,8 +78,8 @@ const rows = computed(() => {
     });
 });
 
-// the breakout month sorts by its age (a month name does not sort), shown as "Aug 2026 · 3 months ago"
-const ago = (n) => n === 1 ? 'last month' : n + ' months ago';
+// the reference month sorts by its age (a month name does not sort), shown as "Aug 2026 · 3 months ago"
+const ago = (n) => n === 0 ? 'this month' : (n === 1 ? 'last month' : n + ' months ago');
 
 // ─── Stars (saved on the symbol's watchlist rows, same as the Watchlist page) ─
 
@@ -109,7 +116,7 @@ function check() {
     if (!symbol || checking.value) return;
     checking.value = true;
     checkResult.value = null;
-    DBService.postData('/api/stock-scanner/check', { scanner: scannerKey.value, symbol }).then((d) => {
+    DBService.postData('/api/stock-scanner/check', { scanner: scannerKey.value, symbol, ...params.value }).then((d) => {
         checking.value = false;
         if (!d.success) { alert(d.message); return; }
         checkResult.value = d;
@@ -157,7 +164,7 @@ const syncedText = computed(() => fresh.value && fresh.value.last_synced ? fmtDa
             <div class="card-panel mb-3">
                 <div class="p-3">
                     <div class="d-flex align-items-center flex-wrap gap-2">
-                        <select v-model="scannerKey" class="form-select form-select-sm fw-semibold" style="width:auto;min-width:240px" title="Scanner">
+                        <select v-model="scannerKey" class="form-select form-select-sm fw-semibold" style="width:auto;min-width:240px" title="Scanner" @change="resetParams">
                             <option v-for="s in overview.scanners" :key="s.key" :value="s.key">{{ s.name }} · {{ s.chart }} chart</option>
                         </select>
                         <select v-model="listId" class="form-select form-select-sm" style="width:auto" title="Which watchlist to scan">
@@ -170,7 +177,7 @@ const syncedText = computed(() => fresh.value && fresh.value.last_synced ? fmtDa
                         </button>
                         <span v-if="result" class="text-muted" style="font-size:12.5px">
                             ran {{ result.ran_at.slice(11, 16) }} · {{ result.scanned }} symbols scanned
-                            <template v-if="result.no_candles || result.no_data"> · {{ result.no_candles + result.no_data }} skipped (no candles, or under 22 months of history)</template>
+                            <template v-if="result.no_candles || result.no_data"> · {{ result.no_candles + result.no_data }} skipped (no candles, or under {{ scanner ? scanner.min_months : 30 }} months of history)</template>
                         </span>
                     </div>
 
@@ -180,6 +187,14 @@ const syncedText = computed(() => fresh.value && fresh.value.last_synced ? fmtDa
                         <ol v-if="showRules" class="small text-muted mt-2 mb-0 ps-3">
                             <li v-for="(r, i) in scanner.rules" :key="i">{{ r }}</li>
                         </ol>
+                        <div v-if="scanner.params.length" class="d-flex flex-wrap align-items-center gap-3 mt-3">
+                            <label v-for="x in scanner.params" :key="x.key" class="d-flex align-items-center gap-2 small mb-0">
+                                {{ x.label }}
+                                <input v-model.number="params[x.key]" type="number" class="form-control form-control-sm mono" style="width:80px" :min="x.min" :max="x.max" :step="x.step">
+                                <span class="text-muted">{{ x.suffix }}</span>
+                            </label>
+                            <a href="#" class="small" @click.prevent="resetParams">Reset</a>
+                        </div>
                     </template>
                 </div>
             </div>
@@ -207,11 +222,12 @@ const syncedText = computed(() => fresh.value && fresh.value.last_synced ? fmtDa
                             <tr>
                                 <th class="th-sort" :class="{ sorted: sortBy === 'rating' }" style="min-width:104px" @click="sort('rating')">Rating <i class="bi" :class="sortIcon('rating')"></i></th>
                                 <th class="th-sort" :class="{ sorted: sortBy === 'symbol' }" style="min-width:150px" @click="sort('symbol')">Symbol <i class="bi" :class="sortIcon('symbol')"></i></th>
-                                <th class="th-sort" :class="{ sorted: sortBy === 'months_ago' }" style="min-width:150px" title="The breakout month" @click="sort('months_ago')">Breakout <i class="bi" :class="sortIcon('months_ago')"></i></th>
-                                <th class="th-sort text-end" :class="{ sorted: sortBy === 'body_pct' }" title="Size of the breakout candle's body" @click="sort('body_pct')">Candle <i class="bi" :class="sortIcon('body_pct')"></i></th>
-                                <th class="th-sort text-end" :class="{ sorted: sortBy === 'volume_x' }" title="Breakout volume against the average of the 12 months before" @click="sort('volume_x')">Volume <i class="bi" :class="sortIcon('volume_x')"></i></th>
-                                <th class="th-sort text-end" :class="{ sorted: sortBy === 'pullback_pct' }" title="How far the latest close is below the breakout close" @click="sort('pullback_pct')">Pullback <i class="bi" :class="sortIcon('pullback_pct')"></i></th>
-                                <th class="th-sort text-end" :class="{ sorted: sortBy === 'rsi9' }" title="Monthly RSI (9) — for information, not a rule" @click="sort('rsi9')">RSI 9 <i class="bi" :class="sortIcon('rsi9')"></i></th>
+                                <th class="th-sort" :class="{ sorted: sortBy === 'months_ago' }" style="min-width:150px" title="The reference candle: the month that closed above the upper Bollinger band" @click="sort('months_ago')">Reference <i class="bi" :class="sortIcon('months_ago')"></i></th>
+                                <th class="th-sort text-end" :class="{ sorted: sortBy === 'body_pct' }" title="Size of the reference candle's body" @click="sort('body_pct')">Candle <i class="bi" :class="sortIcon('body_pct')"></i></th>
+                                <th class="th-sort text-end" :class="{ sorted: sortBy === 'above_band_pct' }" title="How far its close was above the upper band" @click="sort('above_band_pct')">Above band <i class="bi" :class="sortIcon('above_band_pct')"></i></th>
+                                <th class="th-sort text-end" :class="{ sorted: sortBy === 'rsi_ref' }" title="RSI (9) on the reference candle" @click="sort('rsi_ref')">RSI 9 <i class="bi" :class="sortIcon('rsi_ref')"></i></th>
+                                <th class="th-sort text-end" :class="{ sorted: sortBy === 'volume_x' }" title="Its volume against the average of the 20 months before" @click="sort('volume_x')">Volume <i class="bi" :class="sortIcon('volume_x')"></i></th>
+                                <th class="th-sort text-end" :class="{ sorted: sortBy === 'rsi_now' }" title="RSI (9) now (latest month, still forming)" @click="sort('rsi_now')">RSI now <i class="bi" :class="sortIcon('rsi_now')"></i></th>
                                 <th class="th-sort text-end" :class="{ sorted: sortBy === 'price' }" title="Last stored daily close" @click="sort('price')">Price <i class="bi" :class="sortIcon('price')"></i></th>
                                 <th>Watchlist</th>
                                 <th class="text-end">Chart</th>
@@ -228,11 +244,12 @@ const syncedText = computed(() => fresh.value && fresh.value.last_synced ? fmtDa
                                     <div v-if="r.name" class="cell-secondary">{{ r.name }}</div>
                                     <div v-if="r.exchange !== 'NSE'" class="cell-secondary mono text-primary">{{ r.exchange }}</div>
                                 </td>
-                                <td class="text-nowrap" style="font-size:13px">{{ r.breakout_month }} <span class="text-muted">· {{ ago(r.months_ago) }}</span></td>
+                                <td class="text-nowrap" style="font-size:13px">{{ r.ref_month }} <span class="text-muted">· {{ ago(r.months_ago) }}</span></td>
                                 <td class="text-num">+{{ r.body_pct }}%</td>
+                                <td class="text-num">+{{ r.above_band_pct }}%</td>
+                                <td class="text-num">{{ r.rsi_ref !== null ? r.rsi_ref : '—' }}</td>
                                 <td class="text-num">{{ r.volume_x }}×</td>
-                                <td class="text-num" :title="r.retrace_pct !== null ? r.retrace_pct + '% of the breakout candle given back' : ''">−{{ r.pullback_pct }}%</td>
-                                <td class="text-num">{{ r.rsi9 !== null ? r.rsi9 : '—' }}</td>
+                                <td class="text-num" :title="r.rsi_avg_above_now === false ? 'RSI average(3) is now back under average(21)' : ''">{{ r.rsi_now !== null ? r.rsi_now : '—' }}</td>
                                 <td class="text-num">
                                     <template v-if="r.price !== null">{{ fmtPrice(r.price) }}</template><span v-else class="text-muted">—</span>
                                     <div v-if="r.price_date" class="cell-secondary">{{ fmtDate(r.price_date) }}</div>
@@ -265,7 +282,7 @@ const syncedText = computed(() => fresh.value && fresh.value.last_synced ? fmtDa
                                 <span class="status-chip ms-2" :class="checkResult.status === 'match' ? 'chip-green' : 'chip-amber'">
                                     {{ checkResult.status === 'match' ? 'Match' : 'No match' }} · {{ checkResult.passed }} of {{ checkResult.total }} rules
                                 </span>
-                                <span v-if="checkResult.facts" class="text-muted small ms-2">breakout candidate: {{ checkResult.facts.breakout_month }}</span>
+                                <span v-if="checkResult.facts" class="text-muted small ms-2">reference candle: {{ checkResult.facts.ref_month }}</span>
                             </div>
                             <table class="table table-sm mb-0" style="max-width:760px">
                                 <tbody>
