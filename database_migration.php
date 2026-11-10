@@ -545,3 +545,11 @@ CREATE TABLE `live_signal_checks` (
   PRIMARY KEY (`id`),
   INDEX (`signal_id`, `checked_at`)
 ) ENGINE=InnoDB;
+
+-- ─── The Kite access token now lives in this database (no more futures database) ─────────────────────────────────────────
+-- No schema change: two rows in the existing `app_settings` table, written by KiteService::refreshAccessToken() (hourly `kite:refresh-token`,
+-- the Dashboard's Refresh Token button, and the Sync from Kite buttons) and read by PHP and by python/candle_storage.py:
+--   setting_key = 'kite_access_token'  → the token
+--   setting_key = 'kite_token_date'    → the day it is valid for (Y-m-d); a token of an earlier day is never used
+-- The old `mysql_futures` connection (DB_*_FUTURES in .env) is removed.
+

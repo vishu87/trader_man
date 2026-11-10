@@ -305,6 +305,9 @@ class ChartsController extends Controller
             return Response::json(['success' => false, 'message' => 'Invalid symbol'], 200);
         }
 
+        $tok = \App\Services\KiteService::syncToken();   // the python sync reads the token from app_settings: make it the newest one
+        if (!$tok['ok']) return Response::json(['success' => false, 'message' => $tok['message']], 200);
+
         $result = CandleSyncService::startInBackground($symbol, $request->boolean('force'));
 
         return Response::json(['success' => $result['started'], 'message' => $result['message']], 200);

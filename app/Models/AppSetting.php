@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 /**
  * Key/value settings for this app (table app_settings).
- * Not to be confused with the futures database's `settings` table, which only holds the Kite token.
+ * Also holds the Kite access token (kite_access_token + kite_token_date, see KiteService) and the live trading config.
  */
 class AppSetting extends Model
 {

@@ -347,6 +347,19 @@ The server must run the Laravel scheduler every minute:
 * * * * * cd /Applications/MAMP/htdocs/trader_man && php artisan schedule:run >> /dev/null 2>&1
 ```
 
+**The Kite token** is refreshed by its own hourly job in the same file:
+
+```php
+Schedule::command('kite:refresh-token')->hourly()->withoutOverlapping();
+```
+
+It fetches the token from `KITE_TOKEN_URL` and stores it in this app's own `app_settings` table (`kite_access_token` + `kite_token_date`)
+**only when it differs** from what is stored (a new token, or the same token on a new day); a bad answer (an error page, an empty or
+odd-looking body, HTTP error, link unreachable) never replaces a good token. Nothing reads the futures database any more. The same fetch
+happens when you press **Refresh Token** on the Dashboard and before **Sync from Kite** (Zerodha Trades), the Charts sync and the Scanner's
+candle download — if the link is unreachable they carry on with today's stored token, and stop with a clear message when there is none.
+A token stored on an earlier day is never used. Run it by hand: `php artisan kite:refresh-token`.
+
 `live:tick` does nothing outside Mon–Fri 09:15–15:30 (prints "Market closed"). Each run:
 
 1. stores the time as the "last check" (shown on `/live`);
@@ -381,7 +394,7 @@ To go live (do these deliberately, in this order):
 
 To stop: **Trading = Off** (no new buys or extra buys; exits continue) — or switch the Mode back to Dry run.
 
-The Kite token comes from the same place as the rest of the app (`KiteService::client()`, today's token).
+The Kite token comes from the same place as the rest of the app (`KiteService::client()`, today's token from `app_settings`, refreshed hourly).
 
 ---
 

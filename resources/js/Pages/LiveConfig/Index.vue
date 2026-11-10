@@ -244,7 +244,7 @@ function copyUrl(which) {
                 </template>
                 <p v-else class="lc-err" style="margin:0">No webhook secret is set. Add <span class="mono">CHARTINK_WEBHOOK_SECRET=…</span> to .env; until then live mode refuses every call.</p>
                 <p class="lc-hint">Zerodha token for today: <span class="status-chip" :class="brokerReady ? 'chip-green' : 'chip-amber'">{{ brokerReady ? 'found' : 'not found yet' }}</span>
-                    — prices and orders need it. The once-a-minute check is <span class="mono">php artisan live:tick</span>, run by the scheduler cron.</p>
+                    — prices and orders need it. It is fetched from the token link every hour (and by Dashboard → Refresh Token). The once-a-minute check is <span class="mono">php artisan live:tick</span>, run by the scheduler cron.</p>
             </section>
 
             <div class="lc-actions">

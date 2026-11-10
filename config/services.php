@@ -41,8 +41,8 @@ return [
         ],
     ],
 
-    // Zerodha Kite Connect. The daily access token is NOT stored here: it is read from the
-    // `settings` table of the mysql_futures database (see App\Services\KiteService).
+    // Zerodha Kite Connect. The daily access token is NOT stored here: it is fetched from token_url (hourly by `kite:refresh-token`,
+    // and by the Refresh Token / Sync from Kite buttons) and kept in this app's own `app_settings` table (see App\Services\KiteService).
     'kite' => [
         'api_key' => env('KITE_API_KEY'),
         // returns today's access token as plain text

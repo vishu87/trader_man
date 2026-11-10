@@ -8,6 +8,10 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote')->hourly();
 
+// The Kite access token: every hour, fetch it from the token link and store it in app_settings if it differs from the one stored.
+// The python scripts and every Kite call read it from there. Needs the scheduler cron (* * * * * php artisan schedule:run).
+Schedule::command('kite:refresh-token')->hourly()->withoutOverlapping();
+
 // Daily + weekly candles for the portfolio and watchlists, after the market closes (needs the scheduler cron)
 Schedule::command('candles:sync')->weekdays()->at('16:30');
 

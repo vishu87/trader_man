@@ -251,6 +251,6 @@ class LiveController extends Controller
     /** Is there a Kite token for today (without calling Kite)? */
     private function brokerReady(): bool
     {
-        return DB::connection('mysql_futures')->table('settings')->where('meta_key', 'access_token')->where('date', date('Y-m-d'))->exists();
+        return \App\Services\KiteService::hasToken();
     }
 }

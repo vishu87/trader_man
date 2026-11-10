@@ -5,7 +5,7 @@ Candles  : daily, weekly and monthly (weekly / monthly are built from the daily 
 Symbols  : portfolio holdings (zerodha_symbol) + watchlist items + symbols in a live paper trade or an active trade, de-duplicated
 Source   : Kite historical data
 Storage  : `stock_candles` in the trader_man database (upsert, safe to re-run any time)
-Token    : read ONLY from `settings` of the futures database (same as the PHP side)
+Token    : read from `app_settings` of the trader_man database (kept fresh by the PHP side: `kite:refresh-token`, hourly)
 
 Usage (from the project root):
     python/venv/bin/python python/candle_storage.py                 # everything
@@ -23,7 +23,7 @@ history joined with the new days, and only the rows that can have changed are wr
 if Kite's recent history no longer matches what is stored (a split / bonus adjusted the old prices), that symbol is downloaded
 in full again. Naming symbols with --symbol, or --full, always downloads the whole history.
 
-Credentials come from the project's .env (DB_*, DB_DATABASE_FUTURES, KITE_API_KEY) — nothing is hard-coded here.
+Credentials come from the project's .env (DB_*, KITE_API_KEY) — nothing is hard-coded here. Only the DB_DATABASE database is used.
 """
 
 import argparse
@@ -84,15 +84,16 @@ def connect(env, database):
 
 
 def get_access_token(env):
-    db = connect(env, env["DB_DATABASE_FUTURES"])
+    """Today's Kite access token from this app's own `app_settings` table (keys kite_access_token + kite_token_date).
+    A token stored on an earlier day is not used. Returns None when there is none for today."""
+    db = connect(env, env["DB_DATABASE"])
     cur = db.cursor()
-    cur.execute(
-        "SELECT meta_value FROM settings WHERE meta_key = 'access_token' AND `date` = %s",
-        (datetime.date.today().strftime("%Y-%m-%d"),),
-    )
-    row = cur.fetchone()
+    cur.execute("SELECT setting_key, setting_value FROM app_settings WHERE setting_key IN ('kite_access_token', 'kite_token_date')")
+    rows = dict(cur.fetchall())
     db.close()
-    return row[0] if row else None
+    if rows.get("kite_token_date") != datetime.date.today().strftime("%Y-%m-%d"):
+        return None
+    return rows.get("kite_access_token") or None
 
 
 # ─── Which symbols ───────────────────────────────────────────────────
@@ -521,7 +522,7 @@ def main():
 
     token = get_access_token(env)
     if not token:
-        log("ERROR: no Kite access token for today in the futures settings table — nothing synced")
+        log("ERROR: no Kite access token for today in app_settings — use Refresh Token on the Dashboard (it is also fetched hourly) — nothing synced")
         return 2
 
     kite = KiteConnect(api_key=env["KITE_API_KEY"])

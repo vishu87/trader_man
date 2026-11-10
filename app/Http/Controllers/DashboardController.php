@@ -16,7 +16,7 @@ class DashboardController extends Controller
         return Inertia::render('Dashboard/Index')->withViewData(['sidebar' => 'dashboard']);
     }
 
-    // Pull today's Kite access token from the online link into the futures settings table
+    // Pull today's Kite access token from the online link into app_settings (only written when it changed)
     public function refreshToken(Request $request)
     {
         User::AuthenticateUser($request->header('apiToken'));

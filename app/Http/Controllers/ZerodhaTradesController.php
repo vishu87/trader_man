@@ -192,6 +192,9 @@ class ZerodhaTradesController extends Controller
     {
         User::AuthenticateUser($request->header('apiToken'));
 
+        $tok = \App\Services\KiteService::syncToken();   // pick up the newest token first
+        if (!$tok['ok']) return $this->fail($tok['message']);
+
         try {
             $res = ZerodhaTrades::syncToday();
         } catch (\RuntimeException $e) {

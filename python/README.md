@@ -14,8 +14,10 @@ shows Kite's recent prices no longer match what is stored (a split or bonus adju
     python3 -m venv python/venv
     python/venv/bin/pip install -r python/requirements.txt
 
-Credentials are read from the project `.env` (`DB_*`, `DB_DATABASE_FUTURES`, `KITE_API_KEY`).
-The Kite access token comes from `settings` in the futures database and must exist for today.
+Credentials are read from the project `.env` (`DB_*`, `KITE_API_KEY`). Only the `DB_DATABASE` database is used.
+The Kite access token comes from the `app_settings` table of that same database (keys `kite_access_token` and `kite_token_date`) and
+must be today's. The PHP side keeps it fresh: `php artisan kite:refresh-token` runs hourly from the scheduler, and the Dashboard's
+Refresh Token button and the Sync from Kite buttons fetch it too.
 Set `PYTHON_BIN` in `.env` only if the interpreter is somewhere else.
 
 ## Running it

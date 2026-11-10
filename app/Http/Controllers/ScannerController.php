@@ -91,6 +91,9 @@ class ScannerController extends Controller
         $p = $this->period($request);
         if (is_string($p)) return $this->fail($p);
 
+        $tok = \App\Services\KiteService::syncToken();   // newest token first
+        if (!$tok['ok']) return $this->fail($tok['message']);
+
         $res = HistoryFetcher::startInBackground($p[0], $p[1]);
 
         return $res['started'] ? Response::json(['success' => true, 'message' => $res['message']], 200) : $this->fail($res['message']);
