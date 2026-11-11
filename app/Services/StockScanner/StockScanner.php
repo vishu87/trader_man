@@ -14,12 +14,12 @@ use App\Models\WatchlistItem;
 class StockScanner
 {
     const LIST_FLOOR = 50;     // scores below this are not even listed (the page filters from there up: 75 / 80 / …)
-    const HISTORY_YEARS = 5;   // monthly candles loaded per symbol (the RSI comparison looks at every earlier month)
+    const HISTORY_YEARS = 5;   // years of candles loaded per symbol (the RSI comparison looks at every earlier candle)
 
     /** The scanners on offer. Add a class with describe() / evaluate() and list it here. */
     public static function scanners(): array
     {
-        return [MonthlyBollingerBreakout::class];
+        return [MonthlyBollingerBreakout::class, WeeklyBollingerBreakout::class];
     }
 
     public static function find(string $key): ?string
@@ -45,8 +45,8 @@ class StockScanner
         return $out;
     }
 
-    /** Monthly candles, oldest first, for the universe: ['NSE:INFY' => [row, ...]] */
-    public static function monthly(array $universe): array
+    /** Candles of one timeframe ('monthly' | 'weekly'), oldest first, for the universe: ['NSE:INFY' => [row, ...]] */
+    public static function candles(array $universe, string $timeframe): array
     {
         $by = [];
         foreach ($universe as $u) $by[$u['exchange']][] = $u['symbol'];
@@ -55,7 +55,7 @@ class StockScanner
         $out = [];
         foreach ($by as $exchange => $symbols) {
             foreach (array_chunk($symbols, 400) as $chunk) {
-                $rows = DB::table('stock_candles')->where('exchange', $exchange)->where('timeframe', 'monthly')->whereIn('symbol', $chunk)
+                $rows = DB::table('stock_candles')->where('exchange', $exchange)->where('timeframe', $timeframe)->whereIn('symbol', $chunk)
                     ->where('date', '>=', $since)->orderBy('symbol')->orderBy('date')
                     ->get(['symbol', 'date', 'open', 'high', 'low', 'close', 'volume', 'bb_high']);
                 foreach ($rows as $r) {
@@ -75,12 +75,12 @@ class StockScanner
     public static function run(string $scannerClass, $watchlistId = 'all', array $params = []): array
     {
         $universe = self::universe($watchlistId);
-        $monthly  = self::monthly($universe);
+        $candles  = self::candles($universe, $scannerClass::TIMEFRAME);
 
         $results = []; $noData = 0; $noCandles = 0;
         foreach ($universe as $k => $u) {
-            if (empty($monthly[$k])) { $noCandles++; continue; }
-            $r = $scannerClass::evaluate($monthly[$k], $params);
+            if (empty($candles[$k])) { $noCandles++; continue; }
+            $r = $scannerClass::evaluate($candles[$k], $params);
             if ($r['status'] === 'no_data') { $noData++; continue; }
             if ($r['score'] < self::LIST_FLOOR) continue;
             $results[] = ['exchange' => $u['exchange'], 'symbol' => $u['symbol'], 'name' => $u['name'], 'lists' => array_values(array_unique($u['lists'])), 'rating' => $u['rating']] + $r['facts'];
@@ -100,8 +100,9 @@ class StockScanner
     /** One symbol's full check list (why it is, or is not, in the results). */
     public static function check(string $scannerClass, string $exchange, string $symbol, array $params = []): array
     {
-        $rows = self::monthly([['exchange' => $exchange, 'symbol' => $symbol]])[$exchange . ':' . $symbol] ?? [];
-        if (!$rows) return ['status' => 'no_data', 'score' => null, 'passed' => 0, 'total' => 0, 'checks' => [], 'facts' => null, 'message' => "No monthly candles stored for {$exchange}:{$symbol} — is it in a watchlist, and have its candles been synced?"];
+        $timeframe = $scannerClass::TIMEFRAME;
+        $rows = self::candles([['exchange' => $exchange, 'symbol' => $symbol]], $timeframe)[$exchange . ':' . $symbol] ?? [];
+        if (!$rows) return ['status' => 'no_data', 'score' => null, 'passed' => 0, 'total' => 0, 'checks' => [], 'facts' => null, 'message' => "No {$timeframe} candles stored for {$exchange}:{$symbol} — is it in a watchlist, and have its candles been synced?"];
         return $scannerClass::evaluate($rows, $params);
     }
 

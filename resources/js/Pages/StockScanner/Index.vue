@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import DBService from '@/Service/Utils/DBService.js';
 import { fmtPrice, fmtDate } from '@/Service/Utils/Format.js';
 import { useCandleSync } from '@/Service/Utils/CandleSync.js';
@@ -18,6 +18,8 @@ const ratingFilter = ref(0);       // 0 = any, 1–5 = at least that many stars,
 const showRules = ref(false);
 
 const scanner = computed(() => overview.value ? overview.value.scanners.find(s => s.key === scannerKey.value) : null);
+// the unit of the scanner's chart: 'month' or 'week' (the words on this page follow it)
+const unit    = computed(() => (scanner.value && scanner.value.unit) || 'month');
 const fresh   = computed(() => (result.value && result.value.freshness) || (overview.value && overview.value.freshness) || null);
 
 function load() {
@@ -27,6 +29,9 @@ function load() {
         if (!scannerKey.value && d.scanners.length) scannerKey.value = d.scanners[0].key;
     });
 }
+
+// another scanner: the old results (and check) belong to the previous one
+watch(scannerKey, () => { result.value = null; checkResult.value = null; showRules.value = false; });
 
 const candleSync = useCandleSync(() => load());
 onMounted(() => { load(); candleSync.resume(); });
@@ -57,8 +62,8 @@ const rows = computed(() => {
 
 const scoreChip = (n) => n >= 80 ? 'chip-green' : (n >= 65 ? 'chip-amber' : 'chip-neutral');
 
-// the reference month sorts by its age (a month name does not sort), shown as "Aug 2026 · 3 months ago"
-const ago = (n) => n === 0 ? 'this month' : (n === 1 ? 'last month' : n + ' months ago');
+// the reference candle shown as "Aug 2026 · 3 months ago" (weekly: "03 Nov 2026 · 3 weeks ago")
+const ago = (n) => n === 0 ? 'this ' + unit.value : (n === 1 ? 'last ' + unit.value : n + ' ' + unit.value + 's ago');
 
 // ─── Stars (saved on the symbol's watchlist rows, same as the Watchlist page) ─
 
@@ -72,7 +77,7 @@ function onChartRated({ exchange, symbol, rating }) {
     result.value.results.forEach((x) => { if (x.exchange === exchange && x.symbol === symbol) x.rating = rating || null; });
 }
 
-// ─── Chart popup (monthly chart is the one this scanner is about) ────
+// ─── Chart popup ────
 
 const showChartPopup = ref(false);
 const popupItems = ref([]);
@@ -156,7 +161,7 @@ const syncedText = computed(() => fresh.value && fresh.value.last_synced ? fmtDa
                         </button>
                         <span v-if="result" class="text-muted" style="font-size:12.5px">
                             ran {{ result.ran_at.slice(11, 16) }} · {{ result.scanned }} symbols scanned
-                            <template v-if="result.no_candles || result.no_data"> · {{ result.no_candles + result.no_data }} skipped (no candles, or under {{ scanner ? scanner.min_months : 30 }} months of history)</template>
+                            <template v-if="result.no_candles || result.no_data"> · {{ result.no_candles + result.no_data }} skipped (no candles, or under {{ scanner ? scanner.min_bars : 30 }} {{ unit }}s of history)</template>
                         </span>
                     </div>
 
@@ -195,12 +200,12 @@ const syncedText = computed(() => fresh.value && fresh.value.last_synced ? fmtDa
                                 <th style="min-width:104px">Rating</th>
                                 <th style="min-width:150px">Symbol</th>
                                 <th class="text-end" style="min-width:70px" title="Score out of 100: how well the symbol fits all the rules (partial credit for near misses)">Score</th>
-                                <th style="min-width:150px" title="The reference candle: the month that closed above the upper Bollinger band">Reference</th>
+                                <th style="min-width:150px" title="The reference candle: the one that closed above the upper Bollinger band">Reference</th>
                                 <th class="text-end" title="Size of the reference candle's body">Candle</th>
                                 <th class="text-end" title="How far its close was above the upper band">Above band</th>
                                 <th class="text-end" title="RSI (9) on the reference candle">RSI 9</th>
-                                <th class="text-end" title="Its volume against the average of the 20 months before">Volume</th>
-                                <th class="text-end" title="RSI (9) now (latest month, still forming)">RSI now</th>
+                                <th class="text-end" :title="`Its volume against the average of the 20 ${unit}s before`">Volume</th>
+                                <th class="text-end" :title="`RSI (9) now (latest ${unit}, still forming)`">RSI now</th>
                                 <th class="text-end" title="Last stored daily close">Price</th>
                                 <th>Watchlist</th>
                                 <th class="text-end">Chart</th>
@@ -208,7 +213,7 @@ const syncedText = computed(() => fresh.value && fresh.value.last_synced ? fmtDa
                         </thead>
                         <tbody>
                             <tr v-if="!rows.length">
-                                <td colspan="11" class="text-center py-5 text-muted">{{ result.matched ? 'No results match the filters' : 'No symbol in the watchlist scores ' + result.floor + ' or more right now' }}}}</td>
+                                <td colspan="11" class="text-center py-5 text-muted">{{ result.matched ? 'No results match the filters' : 'No symbol in the watchlist scores ' + result.floor + ' or more right now' }}</td>
                             </tr>
                             <tr v-for="r in rows" :key="r.exchange + r.symbol">
                                 <td class="text-nowrap"><StarRating :model-value="r.rating" @rate="(n) => rate(r, n)" /></td>
@@ -218,7 +223,7 @@ const syncedText = computed(() => fresh.value && fresh.value.last_synced ? fmtDa
                                     <div v-if="r.exchange !== 'NSE'" class="cell-secondary mono text-primary">{{ r.exchange }}</div>
                                 </td>
                                 <td class="text-end"><span class="status-chip" :class="scoreChip(r.score)">{{ r.score }}</span></td>
-                                <td class="text-nowrap" style="font-size:13px">{{ r.ref_month }} <span class="text-muted">· {{ ago(r.months_ago) }}</span></td>
+                                <td class="text-nowrap" style="font-size:13px">{{ r.ref_label }} <span class="text-muted">· {{ ago(r.bars_ago) }}</span></td>
                                 <td class="text-num">+{{ r.body_pct }}%</td>
                                 <td class="text-num">+{{ r.above_band_pct }}%</td>
                                 <td class="text-num">{{ r.rsi_ref !== null ? r.rsi_ref : '—' }}</td>
@@ -255,7 +260,7 @@ const syncedText = computed(() => fresh.value && fresh.value.last_synced ? fmtDa
                                 <span class="mono fw-semibold">{{ checkResult.symbol }}</span>
                                 <span class="status-chip ms-2" :class="scoreChip(checkResult.score)">Score {{ checkResult.score }} / 100</span>
                                 <span class="text-muted small ms-2">{{ checkResult.score >= 50 ? 'listed in the results' : 'under 50, so not listed' }}</span>
-                                <span v-if="checkResult.facts" class="text-muted small ms-2">reference candle: {{ checkResult.facts.ref_month }}</span>
+                                <span v-if="checkResult.facts" class="text-muted small ms-2">reference candle: {{ checkResult.facts.ref_label }}</span>
                             </div>
                             <table class="table table-sm mb-0" style="max-width:760px">
                                 <tbody>

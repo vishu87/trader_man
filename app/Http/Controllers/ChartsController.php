@@ -164,7 +164,7 @@ class ChartsController extends Controller
 
     /**
      * The last N candles of one symbol/timeframe, plus the indicator lines drawn on top.
-     * Daily: SMA20, Bollinger bands, SMA50.   Weekly: SMA20, Bollinger bands, SMA40, SMA10.
+     * Daily: SMA20, Bollinger bands, SMA50, SMA10.   Weekly: SMA20, Bollinger bands, SMA40, SMA10.
      * Monthly: SMA20, Bollinger bands, SMA10 (a monthly SMA40/50 needs 3–4 years of history, so it is mostly empty).
      */
     public function candles(Request $request)
@@ -216,6 +216,7 @@ class ChartsController extends Controller
             $lines[] = ['name' => 'SMA10', 'data' => $col('sma10'), 'color' => '#D6409F'];
         } else {
             $lines[] = ['name' => 'SMA50', 'data' => $col('sma50'), 'color' => '#E03131'];
+            $lines[] = ['name' => 'SMA10', 'data' => $col('sma10'), 'color' => '#D6409F'];
         }
 
         return Response::json([
