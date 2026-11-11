@@ -82,6 +82,12 @@ class ChartsController extends Controller
             if ($i->rating !== null) $ratings[$i->exchange . ':' . $i->symbol] = max($ratings[$i->exchange . ':' . $i->symbol] ?? 0, (int) $i->rating);
         }
 
+        // the comment belongs to the symbol (kept on all its watchlist rows): the most recently saved one wins
+        $comments = [];
+        foreach ($items->sortBy('updated_at') as $i) {
+            if ($i->comment !== null && $i->comment !== '') $comments[$i->exchange . ':' . $i->symbol] = $i->comment;
+        }
+
         // where each symbol lives. A chart can only be removed from here when it is in a watchlist and in NO portfolio bucket
         // (any holding row counts — owned, tracking-only or an empty placeholder — because the chart would simply stay visible).
         $in_portfolio = [];
@@ -132,7 +138,7 @@ class ChartsController extends Controller
         $stored = CandleStats::forSymbols(array_values($picked));
         $fibs   = FibService::chartLines(array_values($picked));   // shown Fibonacci swings → price lines per symbol
 
-        $out = collect($picked)->map(function ($p, $key) use ($marks, $fibs, $stored, $followed, $ratings, $in_portfolio, $in_watchlists, $tokens) {
+        $out = collect($picked)->map(function ($p, $key) use ($marks, $fibs, $stored, $followed, $ratings, $comments, $in_portfolio, $in_watchlists, $tokens) {
             return [
                 'key'        => $key,
                 'exchange'   => $p['exchange'],
@@ -141,6 +147,7 @@ class ChartsController extends Controller
                 'fibs'       => $fibs[$key] ?? [],
                 'followed'   => isset($followed[$key]),
                 'rating'     => $ratings[$key] ?? null,
+                'comment'    => $comments[$key] ?? null,
                 'instrument_token' => $tokens[$key] ?? null,
                 'watchlists' => array_values($in_watchlists[$key] ?? []),
                 'in_portfolio' => isset($in_portfolio[$key]),

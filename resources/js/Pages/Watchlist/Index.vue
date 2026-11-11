@@ -24,6 +24,8 @@ const search = ref('');
 const followFilter = ref('all');
 // 0 = any, 1–5 = at least that many stars, 'none' = not rated yet
 const ratingFilter = ref(0);
+// 'all' | 'yes' (has an active trade) | 'no'
+const tradeFilter = ref('all');
 
 const sortBy  = ref('symbol');
 const sortDir = ref('asc');
@@ -95,6 +97,8 @@ const rows = computed(() => {
     if (followFilter.value === 'followed') list = list.filter(i => i.follow);
     if (ratingFilter.value === 'none')     list = list.filter(i => !i.rating);
     else if (ratingFilter.value > 0)       list = list.filter(i => (i.rating || 0) >= ratingFilter.value);
+    if (tradeFilter.value === 'yes')       list = list.filter(i => i.in_trade);
+    if (tradeFilter.value === 'no')        list = list.filter(i => !i.in_trade);
     if (viewFilter.value === 'not_today')  list = list.filter(i => i.last_viewed !== today.value);
     if (viewFilter.value === 'today')      list = list.filter(i => i.last_viewed === today.value);
 
@@ -318,6 +322,10 @@ function onChartRated({ exchange, symbol, rating }) {
     items.value.forEach((r) => { if (r.exchange === exchange && r.symbol === symbol) r.rating = rating || null; });
 }
 
+function onChartCommented({ exchange, symbol, comment }) {
+    items.value.forEach((r) => { if (r.exchange === exchange && r.symbol === symbol) r.comment = comment || null; });
+}
+
 // ─── Links ───────────────────────────────────────────────────────────
 
 const chartsUrl = computed(() => base_url + '/charts?watchlist=' + (typeof tab.value === 'number' ? tab.value : 'all'));
@@ -389,6 +397,11 @@ const kiteChartUrl = (i) => `https://kite.zerodha.com/markets/ext/chart/web/ciq/
                         <option value="all">All symbols</option>
                         <option value="followed">Followed only</option>
                     </select>
+                    <select v-model="tradeFilter" class="form-select form-select-sm" style="width:auto" title="Symbols that have an active trade in the Trades section">
+                        <option value="all">In trade or not</option>
+                        <option value="yes">In trade</option>
+                        <option value="no">Not in trade</option>
+                    </select>
                     <select v-model="ratingFilter" class="form-select form-select-sm" style="width:auto" title="Filter by your star rating">
                         <option :value="0">Any rating</option>
                         <option :value="5">5 stars</option>
@@ -436,6 +449,9 @@ const kiteChartUrl = (i) => `https://kite.zerodha.com/markets/ext/chart/web/ciq/
                             </th>
                             <th>Status</th>
                             <th title="Do you already own this stock in the portfolio?">In Portfolio</th>
+                            <th class="th-sort" :class="{ sorted: sortBy === 'in_trade' }" @click="sort('in_trade')" title="Does this symbol have an active trade in the Trades section?">
+                                In Trade <i class="bi" :class="sortIcon('in_trade')"></i>
+                            </th>
                             <th class="th-sort" :class="{ sorted: sortBy === 'last_viewed' }" @click="sort('last_viewed')" style="min-width:110px" title="When you last opened this chart in the popup">
                                 Last Viewed <i class="bi" :class="sortIcon('last_viewed')"></i>
                             </th>
@@ -444,12 +460,12 @@ const kiteChartUrl = (i) => `https://kite.zerodha.com/markets/ext/chart/web/ciq/
                     </thead>
                     <tbody>
                         <tr v-if="loading && !items.length">
-                            <td :colspan="tab === 'all' ? 10 : 9" class="text-center py-5 text-muted">
+                            <td :colspan="tab === 'all' ? 11 : 10" class="text-center py-5 text-muted">
                                 <span class="spinner-border spinner-border-sm me-2"></span> Loading…
                             </td>
                         </tr>
                         <tr v-else-if="!rows.length">
-                            <td :colspan="tab === 'all' ? 10 : 9" class="text-center py-5 text-muted">
+                            <td :colspan="tab === 'all' ? 11 : 10" class="text-center py-5 text-muted">
                                 {{ search ? 'No symbols match your search' : (watchlists.length ? 'No symbols yet — use Bulk Add or Add Symbol' : 'Create a watchlist to get started') }}
                             </td>
                         </tr>
@@ -499,6 +515,10 @@ const kiteChartUrl = (i) => `https://kite.zerodha.com/markets/ext/chart/web/ciq/
                                     </span>
                                     <span v-else class="text-muted">—</span>
                                 </td>
+                                <td>
+                                    <span v-if="i.in_trade" class="status-chip chip-green" title="Has an active trade in the Trades section">Yes</span>
+                                    <span v-else class="text-muted">No</span>
+                                </td>
                                 <td class="text-nowrap" style="font-size:12.5px">
                                     <span v-if="i.last_viewed && i.last_viewed === today" class="status-chip chip-green" title="You looked at this chart today">Today</span>
                                     <span v-else-if="i.last_viewed" class="text-muted">{{ fmtDate(i.last_viewed) }}</span>
@@ -524,7 +544,7 @@ const kiteChartUrl = (i) => `https://kite.zerodha.com/markets/ext/chart/web/ciq/
 
     <IpoUploadAside :show="showIpoUpload" :watchlist_id="activeList ? activeList.id : ''" @close="showIpoUpload = false" @uploaded="fetchData()" />
 
-    <ChartPopup :show="showChartPopup" :items="popupItems" :start-index="popupStart" @close="showChartPopup = false" @viewed="onChartViewed" @followed="onChartFollowed" @rated="onChartRated" />
+    <ChartPopup :show="showChartPopup" :items="popupItems" :start-index="popupStart" @close="showChartPopup = false" @viewed="onChartViewed" @followed="onChartFollowed" @rated="onChartRated" @commented="onChartCommented" />
 
     <RiskSettings :show="showRisk" :max-loss="maxLoss" @close="showRisk = false" @saved="(v) => maxLoss = v" />
 

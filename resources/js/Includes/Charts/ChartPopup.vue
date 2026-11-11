@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, onBeforeUnmount } from 'vue';
+import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue';
 import DBService from '@/Service/Utils/DBService.js';
 import ChartPane from '@/Includes/Charts/ChartPane.vue';
 import TradePanel from '@/Includes/Trade/TradePanel.vue';
@@ -15,7 +15,7 @@ const props = defineProps({
     startIndex: { type: Number,  default: 0 },
 });
 
-const emit = defineEmits(['close', 'viewed', 'followed', 'rated']);
+const emit = defineEmits(['close', 'viewed', 'followed', 'rated', 'commented']);
 
 const VIEWS = [
     { key: 'weekly',  label: 'Weekly',  tfs: ['weekly'],                     hint: '1' },
@@ -124,6 +124,7 @@ function markViewed(cur) {
 function go(delta) {
     const n = index.value + delta;
     if (n < 0 || n >= props.items.length) return;
+    saveComment();   // an open comment edit belongs to the symbol we are leaving
     index.value = n;
     enter();
 }
@@ -197,6 +198,59 @@ function rate(stars) {
             return;
         }
         emit('rated', { exchange: cur.exchange, symbol: cur.symbol, rating: stars || null });
+    });
+}
+
+// ─── Comment: your note on the symbol, shown under the header and edited in place ───
+// Click the text to edit; it saves when you click away or press Ctrl/Cmd + Enter, Esc cancels. Stored on the symbol's watchlist rows
+// (shared with the watchlist page), so a symbol that is in no watchlist cannot have one.
+const editingComment = ref(false);
+const commentDraft   = ref('');
+const commentEl      = ref(null);
+let commentFor = null;   // the symbol being edited (the user may move to the next one before the blur lands)
+
+function autosize(el) {
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight + 2, 200) + 'px';
+}
+
+function editComment() {
+    if (!detail.value || !detail.value.watchlists.length || !current.value) return;
+    commentFor = current.value;
+    commentDraft.value = detail.value.comment || '';
+    editingComment.value = true;
+    nextTick(() => {
+        const el = commentEl.value;
+        if (!el) return;
+        el.focus();
+        el.setSelectionRange(el.value.length, el.value.length);
+        autosize(el);
+    });
+}
+
+function cancelComment() {
+    editingComment.value = false;   // saveComment() ignores the blur that follows
+}
+
+function saveComment() {
+    if (!editingComment.value) return;
+    editingComment.value = false;
+    const cur  = commentFor;
+    const text = commentDraft.value.trim();
+    const live = detail.value && current.value && keyOf(current.value) === keyOf(cur);   // still on that symbol?
+    const before = live ? (detail.value.comment || '') : null;
+    if (live && text === before) return;   // nothing changed
+
+    if (live) detail.value.comment = text || null;
+    DBService.postData('/api/watchlist/item/comment', { symbol: cur.symbol, exchange: cur.exchange, comment: text }).then((data) => {
+        if (!data.success) {
+            if (detail.value && current.value && keyOf(current.value) === keyOf(cur)) detail.value.comment = before || null;   // revert
+            alert(data.message);
+            return;
+        }
+        if (detail.value && current.value && keyOf(current.value) === keyOf(cur)) detail.value.comment = data.comment;
+        emit('commented', { exchange: cur.exchange, symbol: cur.symbol, comment: data.comment });
     });
 }
 
@@ -343,6 +397,24 @@ function onSync() { startSync(); }
                             :title="(v.title || v.label + ' chart') + ' (' + v.hint + ')'" @click="setView(v.key)"
                         >
                             <i v-if="v.icon" class="bi me-1" :class="v.icon"></i>{{ v.label }}
+                        </button>
+                    </div>
+
+                    <!-- your note on this symbol: click to edit, saves when you click away -->
+                    <div class="chart-comment">
+                        <textarea
+                            v-if="editingComment" ref="commentEl" v-model="commentDraft" class="chart-comment-edit" rows="2" maxlength="5000"
+                            placeholder="Write a comment…  (Ctrl+Enter saves, Esc cancels)"
+                            @input="autosize($event.target)" @blur="saveComment" @keydown.esc.prevent.stop="cancelComment" @keydown.enter.ctrl.prevent="saveComment" @keydown.enter.meta.prevent="saveComment"
+                        ></textarea>
+                        <div v-else-if="detail && detail.comment" class="chart-comment-text" :title="detail.watchlists.length ? 'Click to edit' : ''" @click="editComment">
+                            <i class="bi bi-chat-left-text-fill"></i><span>{{ detail.comment }}</span>
+                        </div>
+                        <button
+                            v-else class="chart-comment-add" :disabled="!detail || !detail.watchlists.length"
+                            :title="detail && !detail.watchlists.length ? 'Add this symbol to a watchlist to comment on it' : 'Add a comment'" @click="editComment"
+                        >
+                            <i class="bi bi-chat-left-text"></i> Add a comment
                         </button>
                     </div>
                 </div>

@@ -15,6 +15,7 @@ use App\Models\PortfolioBucket;
 use App\Models\PortfolioHolding;
 use App\Models\AppSetting;
 use App\Models\ChartView;
+use App\Models\Trade;
 use App\Services\KiteService;
 use App\Services\NseIpoCsvImporter;
 
@@ -59,7 +60,11 @@ class WatchlistController extends Controller
             if ($i->comment !== null && $i->comment !== '') $comments[$i->exchange . ':' . $i->symbol] = $i->comment;
         }
 
-        $rows = $items->map(function ($i) use ($kite, $list_names, $owned, $viewed, $comments, &$missing) {
+        // symbols with an ACTIVE trade in the Trades section (archived ones do not count), keyed 'NSE:INFY'
+        $in_trade = [];
+        foreach (Trade::where('status', 'active')->get(['exchange', 'symbol']) as $t) $in_trade[$t->exchange . ':' . $t->symbol] = true;
+
+        $rows = $items->map(function ($i) use ($kite, $list_names, $owned, $viewed, $comments, $in_trade, &$missing) {
             $key   = $i->exchange . ':' . $i->symbol;
             $ltp   = $kite['ltps'][$key] ?? KiteService::NO_LTP;
             $has   = $ltp > 0;
@@ -93,6 +98,7 @@ class WatchlistController extends Controller
                 'rating'           => $i->rating !== null ? (int) $i->rating : null,   // 1–5 stars, or null = not rated
                 'comment'          => $comments[$key] ?? null,                          // your note on the symbol, or null
                 'last_viewed'      => $viewed[$key] ?? null,
+                'in_trade'         => isset($in_trade[$key]),                           // has an active trade in the Trades section
                 // null, or ['quantity' => total held, 'buckets' => ['Core (250)', ...]]
                 'in_portfolio'     => $owned[$key] ?? null,
             ];

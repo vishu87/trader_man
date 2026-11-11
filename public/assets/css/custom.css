@@ -1694,6 +1694,9 @@ a.tbl-icon-btn {
 }
 
 .chart-modal-tabs {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
   padding: 8px 16px;
   border-bottom: 1px solid #E7EBF1;
   background: #FBFCFE;
@@ -1724,6 +1727,65 @@ a.tbl-icon-btn {
   background: #fff;
   color: #1D4ED8;
   box-shadow: 0 1px 2px rgba(16, 24, 40, 0.12);
+}
+
+.chart-comment {
+  flex: 1;
+  min-width: 0;
+  max-width: 760px;
+}
+
+.chart-comment-text {
+  display: flex;
+  gap: 8px;
+  max-height: 96px;
+  overflow-y: auto;
+  padding: 5px 10px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: #475467;
+  background: #FFF9EB;
+  border-left: 3px solid #F59F00;
+  border-radius: 0 6px 6px 0;
+  cursor: text;
+}
+.chart-comment-text i {
+  color: #F59F00;
+  margin-top: 2px;
+}
+.chart-comment-text span {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.chart-comment-text:hover {
+  background: #FFF3D6;
+}
+
+.chart-comment-add {
+  padding: 5px 4px;
+  border: 0;
+  background: transparent;
+  color: #98A2B3;
+  font-size: 12.5px;
+}
+.chart-comment-add:hover:not(:disabled) {
+  color: #1D4ED8;
+}
+.chart-comment-add:disabled {
+  cursor: not-allowed;
+}
+
+.chart-comment-edit {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  border: 1px solid #2E6BFF;
+  border-radius: 6px;
+  outline: none;
+  resize: vertical;
+  box-shadow: 0 0 0 3px rgba(46, 107, 255, 0.12);
 }
 
 .chart-modal-body {
