@@ -82,6 +82,7 @@ Route::prefix('/trade-signals')->group(function () {
 
 Route::prefix('/trades')->group(function () {
     Route::post('/list',          [TradesController::class, 'list']);
+    Route::post('/zerodha-orders', [TradesController::class, 'zerodhaOrders']);
     Route::post('/save',          [TradesController::class, 'save']);
     Route::post('/status',        [TradesController::class, 'status']);
     Route::post('/delete',        [TradesController::class, 'delete']);

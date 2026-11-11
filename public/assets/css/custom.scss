@@ -1298,6 +1298,22 @@ a.tbl-icon-btn { text-decoration: none; }
   border-radius: 10px;
 }
 .trade-title { font-size: 13px; font-weight: 700; color: #101828; margin-bottom: 8px; }
+// Add Trade: pick a Zerodha buy to prefill the form
+.zt-pick-panel { margin-top: 8px; padding: 8px; border: 1px solid #E7EBF1; border-radius: 8px; background: #FBFCFE; }
+.zt-pick-list { margin-top: 8px; max-height: 260px; overflow-y: auto; }
+.zt-pick-empty { padding: 14px 6px; text-align: center; font-size: 12.5px; color: #8A94A6; }
+.zt-pick-row {
+  display: flex; align-items: baseline; gap: 10px; width: 100%;
+  padding: 7px 8px; border: 0; border-radius: 6px; background: transparent; text-align: left; font-size: 12.5px;
+  &:hover:not(:disabled) { background: #EEF4FF; }
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+  &.is-picked { background: #E7F7EE; }
+  .zt-sym { font-weight: 600; color: #101828; min-width: 96px; }
+  .zt-ex { margin-left: 5px; font-size: 10.5px; color: #2E6BFF; }
+  .zt-meta { color: #475467; flex: 1; }
+  .zt-date { color: #8A94A6; white-space: nowrap; }
+}
+.zt-pick-note { margin: 8px 0 0; font-size: 12px; color: #0E7A45; }
 .trade-sub { margin-top: 10px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: #8A94A6; }
 .trade-list { margin: 4px 0 0; padding-left: 18px; font-size: 12.5px; li { margin-bottom: 3px; } }
 .trade-note {
