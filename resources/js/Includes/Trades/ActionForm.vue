@@ -2,7 +2,7 @@
 import { ref, computed, watch } from 'vue';
 import { useForm } from 'vee-validate';
 import DBService from '@/Service/Utils/DBService.js';
-import { fmtNum, fmtPrice, todayString } from '@/Service/Utils/Format.js';
+import { fmtNum, fmtPrice, fmtDate, todayString } from '@/Service/Utils/Format.js';
 
 // Record (or change) one buy or sell of a trade. The server refuses a sequence that would ever sell more than was held.
 const props = defineProps({
@@ -28,7 +28,34 @@ watch(() => props.show, (val) => {
     model.value = a
         ? { id: a.id, trade_id: props.trade.id, side: a.side, qty: a.qty, price: a.price, charges: a.charges || '', action_date: a.action_date, notes: a.notes || '' }
         : { trade_id: props.trade.id, side: props.side, qty: '', price: '', charges: '', action_date: todayString(), notes: '' };
+    if (a) { zerodha.value = []; pickedKey.value = ''; } else loadZerodha();   // only a NEW entry can be filled from a Zerodha trade
 });
+
+// Recent Zerodha trades of this symbol: click one to fill the side, quantity, price and date. Only a copy of the values —
+// the entry is not linked to Zerodha. (The tradebook has no charges, so that field stays as it is.)
+const zerodha = ref([]);
+const zerodhaLoading = ref(false);
+const pickedKey = ref('');
+
+function loadZerodha() {
+    zerodha.value = [];
+    pickedKey.value = '';
+    const t = props.trade;
+    if (!t) return;
+    zerodhaLoading.value = true;
+    DBService.postData('/api/trades/zerodha-orders', { symbol: t.symbol, exchange: t.exchange }).then((data) => {
+        zerodhaLoading.value = false;
+        if (data.success && props.trade && props.trade.id === t.id) zerodha.value = data.orders;
+    });
+}
+
+function pick(o) {
+    model.value.side = o.side;
+    model.value.qty = o.qty;
+    model.value.price = o.price;
+    model.value.action_date = o.date;
+    pickedKey.value = o.key;
+}
 
 const isSell = computed(() => model.value.side === 'sell');
 
@@ -97,6 +124,19 @@ const submit = handleSubmit(() => {
                 </div>
                 <FormInput label="Charges (₹)" name="charges" type="number" v-model="model.charges" cls="col-6" placeholder="brokerage + taxes" :disabled="loading" />
                 <FormInput label="Notes" name="notes" v-model="model.notes" cls="col-12" placeholder="optional" :disabled="loading" />
+
+                <!-- recent Zerodha trades of this symbol -->
+                <div v-if="!action && (zerodhaLoading || zerodha.length)" class="col-12">
+                    <div class="trade-sub" style="margin-top:2px">Recent Zerodha trades · click to fill</div>
+                    <div v-if="zerodhaLoading" class="zt-pick-empty"><span class="spinner-border spinner-border-sm"></span></div>
+                    <div v-else class="zt-pick-list">
+                        <button v-for="o in zerodha" :key="o.key" type="button" class="zt-pick-row" :class="{ 'is-picked': pickedKey === o.key }" :disabled="loading" @click="pick(o)">
+                            <span class="status-chip" :class="o.side === 'buy' ? 'chip-green' : 'chip-red'" style="min-width:48px;justify-content:center">{{ o.side === 'buy' ? 'Buy' : 'Sell' }}</span>
+                            <span class="zt-meta">{{ fmtNum(o.qty) }} @ {{ fmtPrice(o.price) }}</span>
+                            <span class="zt-date">{{ fmtDate(o.date) }}</span>
+                        </button>
+                    </div>
+                </div>
 
                 <p v-if="hint" class="col-12 mb-0" style="font-size:12.5px">{{ hint }}</p>
                 <p class="col-12 text-muted mb-0" style="font-size:12px">Quantity is whole shares. Charges are optional and reduce the profit. On the same day, buys count before sells.</p>

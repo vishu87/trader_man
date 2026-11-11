@@ -184,35 +184,28 @@ class TradesController extends Controller
     }
 
     /**
-     * Zerodha buys to pick from in the Add Trade drawer (newest first, partial fills of one order summed). It only PREFILLS the form —
-     * nothing is linked or tracked afterwards. `has_trade` marks a symbol that already has an active trade (it cannot be added again).
+     * Recent Zerodha trades of ONE symbol (buys and sells, newest first, partial fills of one order summed) to pick from in the
+     * Record buy / sell drawer. It only PREFILLS the form — nothing is linked or tracked afterwards.
      */
     public function zerodhaOrders(Request $request)
     {
         User::AuthenticateUser($request->header('apiToken'));
 
-        $validator = Validator::make($request->all(), ['search' => 'nullable|string|max:50']);
+        $validator = Validator::make($request->all(), ['symbol' => 'required|string|max:50', 'exchange' => 'nullable|in:NSE,BSE']);
         if (!$validator->passes()) return $this->fail($validator->errors()->first());
 
         $orderKey = "COALESCE(order_id, CONCAT('t', trade_id))";
-        $q = ZerodhaTrade::where('trade_type', 'buy');
-        if ($request->filled('search')) $q->where('symbol', 'like', '%' . trim($request->search) . '%');
-
-        $orders = $q->selectRaw("exchange, trade_date, symbol, {$orderKey} AS order_key, SUM(quantity) AS qty, SUM(quantity * price) AS value, MAX(executed_at) AS last_at")
-            ->groupBy('exchange', 'trade_date', 'symbol', DB::raw($orderKey))
-            ->orderByDesc('trade_date')->orderByDesc('last_at')->limit(150)->get();
-
-        $active = [];
-        foreach (Trade::where('status', 'active')->get(['exchange', 'symbol']) as $t) $active[$t->exchange . ':' . $t->symbol] = true;
+        $orders = ZerodhaTrade::where('symbol', strtoupper(trim($request->symbol)))->where('exchange', $request->exchange ?: 'NSE')
+            ->selectRaw("trade_date, trade_type, {$orderKey} AS order_key, SUM(quantity) AS qty, SUM(quantity * price) AS value, MAX(executed_at) AS last_at")
+            ->groupBy('trade_date', 'trade_type', DB::raw($orderKey))
+            ->orderByDesc('trade_date')->orderByDesc('last_at')->limit(15)->get();
 
         $list = $orders->map(fn ($o) => [
-            'key'       => $o->exchange . '|' . substr((string) $o->trade_date, 0, 10) . '|' . $o->symbol . '|' . $o->order_key,
-            'exchange'  => $o->exchange === 'BSE' ? 'BSE' : 'NSE',
-            'symbol'    => $o->symbol,
-            'date'      => substr((string) $o->trade_date, 0, 10),
-            'qty'       => (int) $o->qty,
-            'price'     => $o->qty > 0 ? round($o->value / $o->qty, 2) : 0,
-            'has_trade' => isset($active[$o->exchange . ':' . $o->symbol]),
+            'key'   => substr((string) $o->trade_date, 0, 10) . '|' . $o->trade_type . '|' . $o->order_key,
+            'side'  => $o->trade_type === 'sell' ? 'sell' : 'buy',
+            'date'  => substr((string) $o->trade_date, 0, 10),
+            'qty'   => (int) $o->qty,
+            'price' => $o->qty > 0 ? round($o->value / $o->qty, 2) : 0,
         ])->values();
 
         return Response::json(['success' => true, 'orders' => $list], 200);
