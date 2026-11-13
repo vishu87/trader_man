@@ -162,7 +162,7 @@ POST  https://<your-site>/api/chartink/<secret>                ← the older for
 ```json
 {
   "success": true,
-  "message": "3 stock(s) received: 0 waiting for their candle, 3 skipped, 0 ignored as repeats, 0 already stored from an earlier identical call",
+  "message": "3 stock(s) received: 0 waiting for their candle, 3 skipped, 0 duplicate(s) kept apart, 0 already stored from an earlier identical call",
   "received_at": "2026-11-10 16:17:00", "raw_id": 1,
   "alert_name": "RISH5-1", "scan_name": "Copy - Copy - Rish5-1", "triggered_at_sent": "4:16 pm",
   "counts": {"stocks": 3, "new": 0, "skipped": 3, "ignored": 0, "duplicates": 0},
@@ -204,18 +204,32 @@ signal is skipped (`the … candle is not available from the broker`). The webho
 for the close and acts within seconds; after that the once-a-minute tick keeps the waiting signals going (at most about a minute
 late). Only one such process runs at a time (a lock file in `storage/framework/live_process.lock`).
 
-**Many alerts, one scan name each.** Every signal stores its `alert_name` *and* its `scan_name`, so alerts from different ChartInk scans
-can be recorded side by side and analysed later (the Signals tab shows the scan name under the alert and has an alert filter). Only the
-alert names enabled in Live Config trade; the others are recorded as `skipped — … recorded only`.
+**Many alerts, one scan name each.** Live Config → *Alerts that trade* is a list: add as many alert names as you run on ChartInk (type a name and
+press Enter, × removes one; names ChartInk has sent in the last 30 days are offered with one click). **Every alert in the list trades.** Every signal
+stores its `alert_name` *and* its `scan_name`, so alerts from different ChartInk scans can be analysed side by side (the Signals tab shows the scan
+name under the alert and has an alert filter). An alert that is not in the list is only recorded: `skipped — … recorded only`.
 
-**Repeats are kept apart (the `ignored` field).** ChartInk fires a stock again every 5 minutes while the scan still matches it, so a
-repeat is stored with `ignored = 1` (status `ignored`, `repeat_of` = the signal it repeats) and is *not* part of the Signals list — it
-has its own **Ignored** tab, and the other tabs and counts leave it out. The *webhook* does this at once, before the engine sees it:
-a later signal for the same **alert + stock + day** is a repeat when the first one is still waiting, was bought, or was judged **Skip**
-(a final answer for the day), or when the alert is only recorded (not enabled). It is **not** a repeat when the first one expired or
-failed, or was skipped for the time of day / a missing price (the new one is a fresh chance), or on another day or under another alert.
+**Duplicates have their own table (`live_signal_duplicates`).** The first signal for a stock on a day is the signal; a later one for the **same stock
+on the same day** — from the same alert **or from another enabled alert** — is a *duplicate* when that first signal is still waiting (being watched / can
+enter), was bought, or was judged **Skip** (a final answer for the day). So if alert A sends INFY and is being watched, and alert B sends INFY half
+an hour later, B's signal is skipped as a duplicate of A's. The *webhook* does this at once, before the engine sees it, and stores the duplicate in
+`live_signal_duplicates` (its alert, scan name, price, time, `repeat_of` = the signal it repeats, `first_alert` = that signal's alert) — **not** in
+`live_signals`, so the main list stays small. Nothing in the trading engine reads the duplicates table. It is **not** a duplicate when the first one
+expired or failed, or was skipped for the time of day / a missing price (the new one is a fresh chance), or on another day. Two alerts that fire the
+same stock in the same minute: the one stored first is the signal. A repeated delivery of the very same call is never stored twice. Signals of an alert
+that is only recorded are compared with that alert's own earlier signals only.
 
-**Ignored by the engine** (decided at once, before the candle closes): a signal for a stock that already has an open or pending position
+The Live Signals page has a **Duplicates** tab (count in the tab, "N duplicates" in the *Alerts today* card): newest first, filter by day and by alert,
+and a **Delete duplicates (N)** button that deletes what is shown — every duplicate, or only the chosen day's / alert's. Only the duplicates table is
+touched, never a real signal. (API: `POST /api/live/duplicates`, `/api/live/duplicates/delete`, both with optional `alert` and `date`.)
+
+**The whole day is watched.** ChartInk is set to send a stock only once, so nothing ever repeats a signal that is waiting. Live Config →
+*A waiting signal is watched* is **The whole day** by default (`watch_all_day`): a *Watch* signal is re-judged on every closed 5-minute candle until the
+buying window ends (`entry_until`, default 15:15) and is bought on the first candle where everything passes. Choose *For a set time* to drop it
+`signal_valid_minutes` after its candle closed instead. A signal left over from an earlier day expires at once (its own day's window ended).
+Each waiting signal costs a few broker candle calls per 5 minutes, so many waiting signals all day means many calls — watch the Zerodha rate limit.
+
+**Ignored by the engine** (decided at once, before the candle closes; these stay in `live_signals`, flagged `ignored = 1`, in the Ignored tab): a signal for a stock that already has an open or pending position
 (`already in the trade — extra buys follow the price`, or `an entry order for this stock is already placed`), or while an *earlier*
 signal for the same stock is still waiting (`signal #12 for this stock is already waiting for its entry`). An ignored signal is never
 judged or bought. These are flagged `ignored = 1` too.
@@ -248,8 +262,8 @@ price — a *re-check* row in the history). If something changed (for example th
 5 open positions — waiting for room`). When room appears (a position is sold, by hand or by target) it is validated again and bought.
 It is checked again only when something can have changed (a new candle, or room appearing), not on every cycle.
 
-**Expiry** — a *Watch* / *Can enter* signal that is still waiting `signal_valid_minutes` (default 60) after its candle closed, or when the buying
-window ends (default 15:15), becomes `expired` (`not bought: …` with the last reason).
+**Expiry** — a *Watch* / *Can enter* signal that is still waiting when the buying window ends (default 15:15) becomes `expired` (with *whole day* off:
+also when it has waited `signal_valid_minutes`, default 60, after its candle closed) (`not bought: …` with the last reason).
 
 **Trading Off** — signals are still judged (so you can watch the verdicts), but nothing is queued or bought: the signal ends as
 `skipped` — `trading is switched off — it was rated: enter` (the verdict stays on the row).
@@ -460,7 +474,8 @@ the field); reading is tolerant (anything missing falls back to the default).
 | Mode (`mode`) | Dry run | `dry_run` or `live` |
 | Alert names (`alert_names`) | `RISH5-1` | only these alerts trade |
 | Ignore alerts older than (`max_alert_age_minutes`) | 5 | 1–30 |
-| A waiting signal expires after (`signal_valid_minutes`) | 60 | 5–240, minutes after its candle closed |
+| A waiting signal is watched (`watch_all_day`) | The whole day | *The whole day* (until the buying window ends) or *For a set time* |
+| …for this long (`signal_valid_minutes`) | 60 | 5–240, minutes after its candle closed; only used when *For a set time* |
 | First buy (`first_amount`) | ₹10,000 | ₹500 – ₹10,00,000 |
 | Average with (`add_amount`) | ₹10,000 | per extra buy, 0 = never average |
 | Max extra buys (`max_adds`) | 3 | 0–20 |

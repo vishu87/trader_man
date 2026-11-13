@@ -123,6 +123,8 @@ Route::any('/chartink/{token}', [LiveWebhookController::class, 'chartink']);
 Route::prefix('/live')->group(function () {
     Route::post('/overview',    [LiveController::class, 'overview']);
     Route::post('/signals',     [LiveController::class, 'signals']);
+    Route::post('/duplicates',  [LiveController::class, 'duplicates']);
+    Route::post('/duplicates/delete', [LiveController::class, 'duplicatesDelete']);
     Route::post('/positions',   [LiveController::class, 'positions']);
     Route::post('/orders',      [LiveController::class, 'orders']);
     Route::post('/signal-checks', [LiveController::class, 'signalChecks']);

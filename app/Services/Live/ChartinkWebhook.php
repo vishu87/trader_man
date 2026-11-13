@@ -11,8 +11,10 @@ use Illuminate\Support\Facades\DB;
  * The alert is identified by `alert_name` (e.g. RISH5-1); the `scan_name` ("Copy - Copy - Rish5-1") is stored with every signal, so alerts from
  * many different scans can be recorded side by side and analysed later. Only the alert names enabled in Live Config trade; the rest are recorded.
  *
- * REPEATS: ChartInk fires a stock again every 5 minutes while the scan still matches it. The first signal is kept and judged; a later one for
- * the same alert + stock + day is stored as IGNORED (ignored = 1, repeat_of = the first) and never reaches the engine — so the main list stays small.
+ * DUPLICATES: the first signal for a stock on a day is kept and judged; a later one for the same stock that day — from the same alert, or from ANOTHER
+ * enabled alert — is a duplicate while the first is still waiting (being watched), was bought, or was judged Skip. Duplicates go to their own table
+ * (live_signal_duplicates, with the alert they came from and the signal they repeat), never to the engine, so live_signals stays small and the
+ * duplicates can be deleted in one go from the Live Signals page.
  * ChartInk posts: stocks "A,B", trigger_prices "1.5,2.5", triggered_at "9:18 am", scan_name, scan_url, alert_name, webhook_url and
  * columns = one object per stock with the scan's columns (symbol, sector, marketcapname, rsi, close …), in the same order as stocks.
  */
@@ -75,33 +77,44 @@ class ChartinkWebhook
             $byPos = is_array($cols[$i] ?? null) ? $cols[$i] : [];
             if (isset($byPos['symbol']) && is_string($byPos['symbol']) && strtoupper(trim($byPos['symbol'])) !== $symbol) $byPos = [];
             $col = $bySymbol[$symbol] ?? $byPos;
-            // a repeat of a signal we already have → stored as ignored, not judged again
-            $first = $alert !== '' ? self::firstSignal($alert, $symbol, $at, !$enabled || !$valid) : null;
+            // a duplicate of a signal we already have → its own table, never judged
+            $first = $alert !== '' ? self::
+            ($alert, $symbol, $at, !$enabled || !$valid) : null;
             if ($first) {
                 $status = 'ignored';
-                $reason = 'repeat of the ' . substr($first->triggered_at, 11, 5) . ' signal (#' . $first->id . ', ' . self::stateOf($first) . ')';
+                $reason = 'repeat of the ' . substr($first->triggered_at, 11, 5) . ' signal (#' . $first->id . ', ' . $first->alert_name . ', ' . self::stateOf($first) . ')';
             }
             $price = isset($prices[$i]) && is_numeric($prices[$i]) && (float) $prices[$i] > 0 ? round((float) $prices[$i], 2) : null;
-            $n = DB::table('live_signals')->insertOrIgnore([
-                'raw_id' => $rawId, 'alert_name' => $alert !== '' ? mb_substr($alert, 0, 100) : '(none)', 'exchange' => 'NSE', 'symbol' => $symbol, 'trigger_price' => $price,
+            $alertKey = $alert !== '' ? mb_substr($alert, 0, 100) : '(none)';
+            $common = [
+                'raw_id' => $rawId, 'alert_name' => $alertKey, 'exchange' => 'NSE', 'symbol' => $symbol, 'trigger_price' => $price,
                 'scan_name' => $scan, 'sector' => $text($col['sector'] ?? null, 80), 'market_cap' => $text($col['marketcapname'] ?? null, 30),
                 'alert_rsi' => $num($col['rsi'] ?? null), 'alert_close' => $num($col['close'] ?? null),
-                'triggered_at' => $at->toDateTimeString(), 'received_at' => $now->toDateTimeString(),
-                'status' => $status, 'ignored' => $first ? 1 : 0, 'repeat_of' => $first->id ?? null, 'reason' => $reason,
-                'processed_at' => in_array($status, ['skipped', 'ignored'], true) ? $now->toDateTimeString() : null, 'created_at' => $now->toDateTimeString(),
-            ]);
+                'triggered_at' => $at->toDateTimeString(), 'received_at' => $now->toDateTimeString(), 'reason' => $reason, 'created_at' => $now->toDateTimeString(),
+            ];
+            if ($first) {
+                $table = 'live_signal_duplicates';
+                $n = DB::table($table)->insertOrIgnore($common + ['repeat_of' => $first->id, 'first_alert' => mb_substr($first->alert_name, 0, 100)]);
+            } else {
+                $table = 'live_signals';
+                $n = DB::table($table)->insertOrIgnore($common + [
+                    'status' => $status, 'ignored' => 0, 'repeat_of' => null,
+                    'processed_at' => $status === 'skipped' ? $now->toDateTimeString() : null,
+                ]);
+            }
             if (!$n) $out['duplicates']++; elseif ($status === 'new') $out['new']++; elseif ($status === 'ignored') $out['repeats']++;
 
             // what is in the table for it now (for a repeated call: the earlier row, with where it has got to)
-            $row = DB::table('live_signals')->where('alert_name', $alert !== '' ? mb_substr($alert, 0, 100) : '(none)')->where('symbol', $symbol)->where('triggered_at', $at->toDateTimeString())->first();
+            $row = DB::table($table)->where('alert_name', $alertKey)->where('symbol', $symbol)->where('triggered_at', $at->toDateTimeString())->first();
             $out['entries'][] = [
-                'position' => $i + 1, 'received_as' => $given, 'id' => $row->id ?? null, 'symbol' => $symbol, 'exchange' => $row->exchange ?? 'NSE',
+                'position' => $i + 1, 'received_as' => $given, 'id' => $row->id ?? null, 'stored_in' => $table, 'symbol' => $symbol, 'exchange' => $row->exchange ?? 'NSE',
                 'alert_name' => $row->alert_name ?? $alert, 'scan_name' => $row->scan_name ?? $scan,
                 'trigger_price' => isset($row->trigger_price) ? (float) $row->trigger_price : $price, 'triggered_at' => $row->triggered_at ?? $at->toDateTimeString(),
                 'sector' => $row->sector ?? null, 'market_cap' => $row->market_cap ?? null,
                 'rsi' => isset($row->alert_rsi) ? (float) $row->alert_rsi : null, 'close' => isset($row->alert_close) ? (float) $row->alert_close : null,
                 'column_used' => $col ? 'columns[' . (isset($bySymbol[$symbol]) ? 'matched by symbol' : $i) . ']' : null,
-                'saved' => (bool) $n, 'duplicate' => !$n, 'ignored' => (bool) ($row->ignored ?? ($first ? 1 : 0)), 'repeat_of' => $row->repeat_of ?? ($first->id ?? null), 'status' => $row->status ?? $status, 'verdict' => $row->verdict ?? null, 'reason' => $row->reason ?? $reason,
+                'saved' => (bool) $n, 'duplicate' => !$n, 'ignored' => (bool) $first, 'repeat_of' => $row->repeat_of ?? ($first->id ?? null),
+                'status' => $first ? 'ignored' : ($row->status ?? $status), 'verdict' => $row->verdict ?? null, 'reason' => $row->reason ?? $reason,
             ];
         }
 
@@ -109,22 +122,27 @@ class ChartinkWebhook
     }
 
     /**
-     * The earlier signal this one repeats, or null: same alert, same stock, same day, not itself ignored, and
-     *   - the alert is enabled: it is still waiting, was bought, or was judged Skip (a final answer for the day);
-     *     one that expired / failed, or was skipped for the time of day / a missing price, does not count — the new one is a fresh chance;
-     *   - the alert is only recorded (not enabled) or the symbol is not valid: any earlier one counts.
+     * The earlier signal this one duplicates, or null: same stock, same day, not itself ignored, and
+     *   - the alert is enabled: the earlier signal — from this alert OR any other — is still waiting, was bought, or was judged Skip (a final
+     *     answer for the day); one that expired / failed, or was skipped for the time of day / a missing price, does not count — the new one is a fresh chance.
+     *     (Signals of alerts that are only recorded never count here: they have no verdict.)
+     *   - the alert is only recorded (not enabled) or the symbol is not valid: any earlier signal of THIS alert counts.
      */
     private static function firstSignal(string $alert, string $symbol, \Illuminate\Support\Carbon $at, bool $recordOnly): ?object
     {
-        $q = DB::table('live_signals')->where('alert_name', mb_substr($alert, 0, 100))->where('symbol', $symbol)->where('ignored', 0)
-            ->where('triggered_at', '>=', $at->copy()->startOfDay()->toDateTimeString())->where('triggered_at', '<', $at->toDateTimeString())->orderBy('id');
-        if (!$recordOnly) {
+        $q = DB::table('live_signals')->where('symbol', $symbol)->where('ignored', 0)
+            ->where('triggered_at', '>=', $at->copy()->startOfDay()->toDateTimeString())->where('triggered_at', '<=', $at->toDateTimeString())->orderBy('id');
+        // (two alerts firing the same stock in the same minute: the one stored first is the signal, not the same alert's own row again)
+        $q->whereNot(fn ($x) => $x->where('alert_name', mb_substr($alert, 0, 100))->where('triggered_at', $at->toDateTimeString()));
+        if ($recordOnly) {
+            $q->where('alert_name', mb_substr($alert, 0, 100));
+        } else {
             $q->where(function ($w) {
                 $w->whereIn('status', ['new', 'working', 'watching', 'enter', 'done'])
                   ->orWhere(fn ($x) => $x->where('status', 'skipped')->where('verdict', 'skip'));
             });
         }
-        return $q->first(['id', 'status', 'triggered_at']);
+        return $q->first(['id', 'alert_name', 'status', 'triggered_at']);
     }
 
     private static function stateOf(object $first): string

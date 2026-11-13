@@ -18,7 +18,8 @@ use App\Services\Live\Brokers\Broker;
  *     Watch     ─► status watching: re-classified on every closed candle until it becomes Can enter or runs out of time
  *     Skip      ─► status skipped
  *   ignored: the stock is already held, an entry order is already placed, or an earlier signal for it is still waiting
- *   expired: still waiting signal_valid_minutes after its candle closed (or the buying window ended)
+ *   expired: the buying window ended while it was still waiting (the whole day is watched: ChartInk sends a stock only once), or — with
+ *            "watch the whole day" off — it was still waiting signal_valid_minutes after its candle closed
  *
  * Every order is written down BEFORE it is sent (status 'sending'), so a crash can never leave a real order we do not know about.
  * Nothing here reads any backtesting code. Extra buys (averages) follow the price and are checked by checkAverages().
@@ -119,10 +120,13 @@ class SignalProcessor
 
     private function expire(LiveSignal $s, array $cfg, Carbon $now): bool
     {
-        $deadline = self::candleEnd($s)->addMinutes((int) $cfg['signal_valid_minutes']);
-        $closes = $now->copy()->setTimeFromTimeString($cfg['entry_until']);   // the buying window ends first, when that is sooner
-        $why = 'it was still waiting ' . $cfg['signal_valid_minutes'] . ' min after its candle closed';
-        if ($closes->lt($deadline)) { $deadline = $closes; $why = 'the buying window ended (' . $cfg['entry_until'] . ')'; }
+        // the buying window of the DAY THE SIGNAL CAME in (a signal left over from an earlier day must not live on into today)
+        $closes = Carbon::parse($s->triggered_at)->setTimeFromTimeString($cfg['entry_until']);
+        $deadline = $closes; $why = 'the buying window ended (' . $cfg['entry_until'] . ')';
+        if (!$cfg['watch_all_day']) {
+            $limit = self::candleEnd($s)->addMinutes((int) $cfg['signal_valid_minutes']);
+            if ($limit->lt($closes)) { $deadline = $limit; $why = 'it was still waiting ' . $cfg['signal_valid_minutes'] . ' min after its candle closed'; }
+        }
         if ($now->lte($deadline)) return false;
 
         $last = $s->reason ? ' — last: ' . $s->reason : '';

@@ -73,6 +73,7 @@ class LiveController extends Controller
             'capital_held' => round((float) $open->sum('invested'), 2), 'unrealised' => round($unrealised, 2),
             'realised_today' => round((float) LivePosition::where('status', 'closed')->where('closed_at', '>=', $today . ' 00:00:00')->sum('pnl'), 2),
             'signals_today' => LiveSignal::where('received_at', '>=', $today . ' 00:00:00')->selectRaw('status, COUNT(*) n')->groupBy('status')->pluck('n', 'status'),
+            'duplicates_today' => DB::table('live_signal_duplicates')->where('triggered_at', '>=', $today . ' 00:00:00')->count(),
             'attention' => $attention,
             'webhook_ready' => $cfg['mode'] !== 'live' || $secret !== '',   // dry run: the open URL works; live mode needs the secret
         ], 200);
@@ -87,12 +88,54 @@ class LiveController extends Controller
         // the main list leaves the ignored ones out (they come in their thousands: ChartInk repeats a stock every 5 minutes); ask for them with ignored = 1
         $ignored = $request->boolean('ignored');
 
-        return Response::json(['success' => true, 'ignored_count' => LiveSignal::where('ignored', 1)->count(), 'signals' => LiveSignal::where('ignored', $ignored ? 1 : 0)->orderByDesc('id')->limit(300)->get()->map(fn ($s) => [
+        return Response::json(['success' => true, 'ignored_count' => LiveSignal::where('ignored', 1)->count(), 'duplicates_count' => DB::table('live_signal_duplicates')->count(), 'signals' => LiveSignal::where('ignored', $ignored ? 1 : 0)->orderByDesc('id')->limit(300)->get()->map(fn ($s) => [
             'id' => $s->id, 'alert_name' => $s->alert_name, 'scan_name' => $s->scan_name, 'ignored' => (bool) $s->ignored, 'repeat_of' => $s->repeat_of, 'symbol' => $s->symbol, 'exchange' => $s->exchange, 'trigger_price' => $s->trigger_price !== null ? (float) $s->trigger_price : null,
             'sector' => $s->sector, 'market_cap' => $s->market_cap, 'alert_rsi' => $s->alert_rsi !== null ? (float) $s->alert_rsi : null,
             'triggered_at' => $s->triggered_at, 'received_at' => $s->received_at, 'status' => $s->status, 'verdict' => $s->verdict, 'score' => $s->score,
             'action' => $s->action, 'reason' => $s->reason, 'position_id' => $s->position_id, 'checks' => (int) $s->checks, 'checked_at' => $s->checked_at,
         ])], 200);
+    }
+
+    /**
+     * The duplicate signals (live_signal_duplicates): a stock that already had a signal that day, repeated by the same alert or by another one.
+     * Optional filters: `alert` (the alert it came from) and `date` (the day it fired). Newest first, 500 at most; `total` counts all that match.
+     */
+    public function duplicates(Request $request)
+    {
+        User::AuthenticateUser($request->header('apiToken'));
+
+        $q = self::duplicatesQuery($request);
+        $total = (clone $q)->count();
+        $rows = $q->orderByDesc('id')->limit(500)->get()->map(fn ($d) => [
+            'id' => $d->id, 'alert_name' => $d->alert_name, 'scan_name' => $d->scan_name, 'first_alert' => $d->first_alert, 'repeat_of' => $d->repeat_of, 'symbol' => $d->symbol, 'exchange' => $d->exchange,
+            'trigger_price' => $d->trigger_price !== null ? (float) $d->trigger_price : null, 'sector' => $d->sector, 'market_cap' => $d->market_cap,
+            'alert_rsi' => $d->alert_rsi !== null ? (float) $d->alert_rsi : null, 'triggered_at' => $d->triggered_at, 'received_at' => $d->received_at, 'reason' => $d->reason,
+        ])->values();
+
+        // what could be filtered on: the alerts and days that have duplicates
+        $alerts = DB::table('live_signal_duplicates')->distinct()->orderBy('alert_name')->pluck('alert_name');
+        $days   = DB::table('live_signal_duplicates')->selectRaw('DATE(triggered_at) d, COUNT(*) n')->groupBy('d')->orderByDesc('d')->limit(60)->pluck('n', 'd');
+
+        return Response::json(['success' => true, 'total' => $total, 'all' => DB::table('live_signal_duplicates')->count(), 'duplicates' => $rows, 'alerts' => $alerts, 'days' => $days], 200);
+    }
+
+    /** Delete the duplicates that match the filters (all of them when none is given). Only this table is touched — never a real signal. */
+    public function duplicatesDelete(Request $request)
+    {
+        User::AuthenticateUser($request->header('apiToken'));
+
+        $n = self::duplicatesQuery($request)->delete();
+        return Response::json(['success' => true, 'message' => $n ? "{$n} duplicate signal(s) deleted" : 'Nothing to delete', 'deleted' => $n, 'remaining' => DB::table('live_signal_duplicates')->count()], 200);
+    }
+
+    private static function duplicatesQuery(Request $request)
+    {
+        $q = DB::table('live_signal_duplicates');
+        if ($request->filled('alert')) $q->where('alert_name', (string) $request->alert);
+        if ($request->filled('date') && preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $request->date)) {
+            $q->where('triggered_at', '>=', $request->date . ' 00:00:00')->where('triggered_at', '<=', $request->date . ' 23:59:59');
+        }
+        return $q;
     }
 
     /** One signal's status over time: every look the engine took at it. */
@@ -234,8 +277,13 @@ class LiveController extends Controller
         $cfg = LiveConfig::get();
         $secret = (string) config('services.chartink.webhook_secret');
 
+        // the alert names ChartInk has actually sent in the last 30 days (raw calls), so another alert can be enabled with one click
+        $since = Clock::now()->subDays(30)->toDateTimeString();
+        $seen = DB::table('raw_data_chartink')->where('received_at', '>=', $since)->whereNotNull('alert_name')->selectRaw('alert_name, COUNT(*) calls, MAX(received_at) last_at')
+            ->groupBy('alert_name')->orderByDesc('last_at')->get()->map(fn ($r) => ['name' => $r->alert_name, 'calls' => (int) $r->calls, 'last_at' => $r->last_at, 'enabled' => in_array($r->alert_name, $cfg['alert_names'], true)])->values();
+
         return Response::json([
-            'success' => true, 'config' => $cfg, 'defaults' => LiveConfig::defaults(), 'max_per_stock' => LiveConfig::maxPerStock($cfg),
+            'success' => true, 'config' => $cfg, 'seen_alerts' => $seen, 'defaults' => LiveConfig::defaults(), 'max_per_stock' => LiveConfig::maxPerStock($cfg),
             'webhook_url' => url('/api/chart-ink-alerts'), 'webhook_url_key' => $secret !== '' ? url('/api/chart-ink-alerts') . '?key=' . $secret : null,
             'broker_ready' => $this->brokerReady(),
         ], 200);

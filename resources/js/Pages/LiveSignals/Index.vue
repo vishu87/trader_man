@@ -8,8 +8,17 @@ import DayChart from '@/Includes/LiveSignals/DayChart.vue';
 // Read-only: the engine itself is App\Services\Live (webhook → signals → orders, and the once-a-minute check).
 const overview  = ref(null);
 const signals   = ref([]);                  // the signals that count (the ignored repeats are kept apart)
-const ignoredRows  = ref([]);               // ignored: repeats of a signal we already have, or of a stock we hold — loaded when its tab is opened
+const ignoredRows  = ref([]);               // ignored by the engine: the stock is already held, or an earlier signal for it is still waiting — loaded when its tab is opened
 const ignoredCount = ref(0);
+// duplicates live in their own table (a stock that already had a signal that day, repeated by the same alert or another): loaded when the tab is opened
+const dupRows   = ref([]);
+const dupCount  = ref(0);                  // all of them
+const dupTotal  = ref(0);                  // the ones matching the day / alert chosen
+const dupAlerts = ref([]);
+const dupDays   = ref({});                 // 'Y-m-d' => how many
+const dupDay    = ref('all');
+const dupAlert  = ref('all');
+const deletingDups = ref(false);
 const positions = ref({ open: [], closed: [] });
 const orders    = ref([]);
 const tab       = ref('signals');          // signals | positions | orders
@@ -32,7 +41,7 @@ function ts(s) {
 const SIGNAL_CHIP   = { new: 'chip-amber', working: 'chip-amber', watching: 'chip-amber', enter: 'chip-green', done: 'chip-green', skipped: 'chip-neutral', ignored: 'chip-neutral', expired: 'chip-neutral', failed: 'chip-red' };
 const SIGNAL_LABEL  = { new: 'waiting for its candle', working: 'checking…', watching: 'watching', enter: 'can enter · waiting for room', done: 'bought', skipped: 'skipped', ignored: 'ignored', expired: 'expired', failed: 'failed' };
 const VERDICT       = { enter: ['chip-green', 'Can enter'], watch: ['chip-amber', 'Watch'], skip: ['chip-red', 'Skip'], nodata: ['chip-neutral', 'No data'] };
-const FILTERS       = [['all', 'All'], ['waiting', 'Waiting'], ['bought', 'Bought'], ['skipped', 'Skipped'], ['ignored', 'Ignored'], ['ended', 'Expired / failed']];
+const FILTERS       = [['all', 'All'], ['waiting', 'Waiting'], ['bought', 'Bought'], ['skipped', 'Skipped'], ['ignored', 'Ignored'], ['duplicates', 'Duplicates'], ['ended', 'Expired / failed']];
 const GROUP         = { new: 'waiting', working: 'waiting', watching: 'waiting', enter: 'waiting', done: 'bought', skipped: 'skipped', ignored: 'ignored', expired: 'ended', failed: 'ended' };
 const POSITION_CHIP = { pending: 'chip-amber', open: 'chip-green', closed: 'chip-neutral', cancelled: 'chip-neutral', failed: 'chip-red' };
 const ORDER_CHIP    = { sending: 'chip-amber', open: 'chip-amber', complete: 'chip-green', rejected: 'chip-red', cancelled: 'chip-neutral', unknown: 'chip-red' };
@@ -47,8 +56,9 @@ function loadOverview() {
 function loadTab() {
     const t = tab.value;
     if (t === 'signals')   return Promise.all([
-        DBService.postData('/api/live/signals', {}).then((d) => { if (d.success) { signals.value = d.signals; ignoredCount.value = d.ignored_count; Object.keys(timeline.value).forEach((id) => loadChecks(id)); } }),
+        DBService.postData('/api/live/signals', {}).then((d) => { if (d.success) { signals.value = d.signals; ignoredCount.value = d.ignored_count; dupCount.value = d.duplicates_count; Object.keys(timeline.value).forEach((id) => loadChecks(id)); } }),
         filter.value === 'ignored' ? loadIgnored() : null,
+        filter.value === 'duplicates' ? loadDuplicates() : null,
     ]);
     if (t === 'positions') return DBService.postData('/api/live/positions', {}).then((d) => { if (d.success) positions.value = d; });
     return DBService.postData('/api/live/orders', {}).then((d) => { if (d.success) orders.value = d.orders; });
@@ -66,16 +76,39 @@ const alertFilter = ref('all');   // all | an alert name — alerts from differe
 function loadIgnored() {
     return DBService.postData('/api/live/signals', { ignored: 1 }).then((d) => { if (d.success) { ignoredRows.value = d.signals; ignoredCount.value = d.ignored_count; } });
 }
+function loadDuplicates() {
+    return DBService.postData('/api/live/duplicates', { alert: dupAlert.value === 'all' ? '' : dupAlert.value, date: dupDay.value === 'all' ? '' : dupDay.value }).then((d) => {
+        if (!d.success) return;
+        dupRows.value = d.duplicates; dupTotal.value = d.total; dupCount.value = d.all; dupAlerts.value = d.alerts; dupDays.value = d.days;
+        // a day / alert that no longer has duplicates (after a delete) goes back to "all"
+        if (dupDay.value !== 'all' && !(dupDay.value in d.days)) { dupDay.value = 'all'; loadDuplicates(); }
+        else if (dupAlert.value !== 'all' && !d.alerts.includes(dupAlert.value)) { dupAlert.value = 'all'; loadDuplicates(); }
+    });
+}
 function setFilter(f) {
     filter.value = f;
     if (f === 'ignored') loadIgnored();
+    if (f === 'duplicates') loadDuplicates();
+}
+
+// delete the duplicates shown (every one, or only a day's / an alert's): real signals are never touched
+function deleteDuplicates() {
+    if (!dupTotal.value || deletingDups.value) return;
+    const what = (dupAlert.value === 'all' ? '' : ' from the alert ' + dupAlert.value) + (dupDay.value === 'all' ? '' : ' of ' + fmtDate(dupDay.value));
+    if (!confirm('Delete ' + dupTotal.value + ' duplicate signal(s)' + what + '?\n\nThey are repeats of a signal that was already judged (same stock, same day), so nothing is lost for trading. This cannot be undone.')) return;
+    deletingDups.value = true;
+    DBService.postData('/api/live/duplicates/delete', { alert: dupAlert.value === 'all' ? '' : dupAlert.value, date: dupDay.value === 'all' ? '' : dupDay.value }).then((d) => {
+        deletingDups.value = false;
+        banner.value = { ok: d.success, bad: !d.success, message: typeof d.message === 'string' ? d.message : 'Could not delete' };
+        loadDuplicates();
+    });
 }
 // the alert names seen, with how many signals each (the ignored list is only loaded when opened)
 const alertNames = computed(() => [...new Set([...signals.value, ...ignoredRows.value].map((s) => s.alert_name))].sort());
 const byAlert = (list) => alertFilter.value === 'all' ? list : list.filter((s) => s.alert_name === alertFilter.value);
 const shown = computed(() => filter.value === 'ignored' ? byAlert(ignoredRows.value)
     : byAlert(filter.value === 'all' ? signals.value : signals.value.filter((s) => GROUP[s.status] === filter.value)));
-const countOf = (f) => f === 'ignored' ? ignoredCount.value : byAlert(f === 'all' ? signals.value : signals.value.filter((s) => GROUP[s.status] === f)).length;
+const countOf = (f) => f === 'ignored' ? ignoredCount.value : f === 'duplicates' ? dupCount.value : byAlert(f === 'all' ? signals.value : signals.value.filter((s) => GROUP[s.status] === f)).length;
 
 const timeline = ref({});     // signal id -> checks (open rows)
 function loadChecks(id) {
@@ -185,7 +218,7 @@ const todayWaiting = computed(() => today('new') + today('working') + today('wat
                 <div class="pf-stat">
                     <div class="pf-stat-label">Alerts today</div>
                     <div class="pf-stat-value">{{ todayAll }}</div>
-                    <div class="pf-stat-sub">{{ today('done') }} bought · {{ todayWaiting }} waiting · {{ today('skipped') }} skipped · {{ today('ignored') }} ignored<template v-if="today('failed')"> · <span class="pnl-neg">{{ today('failed') }} failed</span></template></div>
+                    <div class="pf-stat-sub">{{ today('done') }} bought · {{ todayWaiting }} waiting · {{ today('skipped') }} skipped · {{ today('ignored') }} ignored<template v-if="overview.duplicates_today"> · {{ overview.duplicates_today }} duplicates</template><template v-if="today('failed')"> · <span class="pnl-neg">{{ today('failed') }} failed</span></template></div>
                 </div>
                 <div class="pf-stat">
                     <div class="pf-stat-label">Last check</div>
@@ -205,16 +238,51 @@ const todayWaiting = computed(() => today('new') + today('working') + today('wat
                 <div v-if="tab === 'signals'">
                     <div class="ls-filters">
                         <button v-for="f in FILTERS" :key="f[0]" class="pf-tab" :class="{ active: filter === f[0] }" style="padding:4px 10px" @click="setFilter(f[0])">{{ f[1] }} <span class="pf-tab-count">{{ countOf(f[0]) }}</span></button>
-                        <select v-if="alertNames.length > 1" v-model="alertFilter" class="form-select form-select-sm ms-auto" style="width:auto" title="Show the signals of one alert (one ChartInk scan) only">
+                        <select v-if="alertNames.length > 1 && filter !== 'duplicates'" v-model="alertFilter" class="form-select form-select-sm ms-auto" style="width:auto" title="Show the signals of one alert (one ChartInk scan) only">
                             <option value="all">All alerts</option>
                             <option v-for="a in alertNames" :key="a" :value="a">{{ a }}</option>
                         </select>
                     </div>
-                    <div class="table-responsive">
+
+                    <!-- ── duplicates: kept apart, deletable ── -->
+                    <div v-if="filter === 'duplicates'">
+                        <div class="ls-filters" style="padding-top:0">
+                            <span class="text-muted small">A stock that already had a signal that day, sent again by the same alert or by another one. They never reach the engine.</span>
+                            <select v-model="dupDay" class="form-select form-select-sm ms-auto" style="width:auto" title="Show one day's duplicates" @change="loadDuplicates">
+                                <option value="all">All days</option>
+                                <option v-for="(n, d) in dupDays" :key="d" :value="d">{{ fmtDate(d) }} · {{ n }}</option>
+                            </select>
+                            <select v-model="dupAlert" class="form-select form-select-sm" style="width:auto" title="Show the duplicates of one alert" @change="loadDuplicates">
+                                <option value="all">All alerts</option>
+                                <option v-for="a in dupAlerts" :key="a" :value="a">{{ a }}</option>
+                            </select>
+                            <button class="btn-secondary-sm ls-del-btn" :disabled="!dupTotal || deletingDups" title="Delete the duplicates shown (every one when no day / alert is chosen)" @click="deleteDuplicates">
+                                <span v-if="deletingDups" class="spinner-border spinner-border-sm"></span><i v-else class="bi bi-trash"></i> Delete duplicates<span v-if="dupTotal"> ({{ dupTotal }})</span>
+                            </button>
+                        </div>
+                        <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead><tr><th>Received</th><th>Stock</th><th>Alert</th><th class="text-end">Alert price</th><th>Repeats</th></tr></thead>
+                            <tbody>
+                                <tr v-if="!dupRows.length"><td colspan="5" class="text-center py-5 text-muted">No duplicates{{ dupCount ? ' for this choice' : ' yet' }}. A stock that is sent again the same day while its first signal is still being watched, was bought or was judged Skip is kept here.</td></tr>
+                                <tr v-for="d in dupRows" :key="d.id">
+                                    <td class="text-nowrap mono">{{ ts(d.received_at) }}<div class="cell-secondary" style="margin:0">fired {{ d.triggered_at.slice(11, 16) }}</div></td>
+                                    <td class="cell-primary mono">{{ d.symbol }}<span class="ls-ex" :class="{ 'ls-ex-bse': d.exchange === 'BSE' }">{{ d.exchange }}</span>
+                                        <div v-if="d.sector || d.market_cap" class="cell-secondary" style="margin:0">{{ [d.sector, d.market_cap].filter(Boolean).join(' · ') }}</div></td>
+                                    <td class="text-muted">{{ d.alert_name }}<div v-if="d.scan_name" class="cell-secondary" style="margin:0">{{ d.scan_name }}</div></td>
+                                    <td class="text-num">{{ d.trigger_price ? fmtPrice(d.trigger_price) : '—' }}<div v-if="d.alert_rsi !== null" class="cell-secondary" style="margin:0">RSI {{ fmtNum(d.alert_rsi, 1) }}</div></td>
+                                    <td class="ls-reason">{{ d.reason }}<span v-if="d.first_alert && d.first_alert !== d.alert_name" class="status-chip chip-amber ms-1" title="Sent by a different alert than the first signal">other alert</span></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        </div>
+                    </div>
+
+                    <div v-else class="table-responsive">
                     <table class="table table-hover align-middle mb-0">
                         <thead><tr><th style="width:28px"></th><th>Received</th><th>Stock</th><th>Alert</th><th class="text-end">Alert price</th><th>Rated</th><th>Status</th><th>Why</th></tr></thead>
                         <tbody>
-                            <tr v-if="!shown.length"><td colspan="8" class="text-center py-5 text-muted">{{ filter === 'ignored' ? 'Nothing ignored yet. Repeats of a signal we already have (ChartInk fires a stock again every 5 minutes) are kept here, apart from the main list.' : (signals.length ? 'No signals in this group.' : 'No alerts yet. When ChartInk calls the webhook they appear here within a second.') }}</td></tr>
+                            <tr v-if="!shown.length"><td colspan="8" class="text-center py-5 text-muted">{{ filter === 'ignored' ? 'Nothing ignored yet. Signals the engine did not act on because the stock is already held, or an earlier signal for it is still waiting, are kept here.' : (signals.length ? 'No signals in this group.' : 'No alerts yet. When ChartInk calls the webhook they appear here within a second.') }}</td></tr>
                             <template v-for="s in shown" :key="s.id">
                                 <tr>
                                     <td class="p-0 ps-2"><button v-if="s.checks" class="tbl-icon-btn" :title="timeline[s.id] ? 'Hide how its status changed' : 'Show how its status changed over time'" @click="toggleChecks(s)"><i class="bi" :class="timeline[s.id] ? 'bi-chevron-down' : 'bi-chevron-right'"></i></button></td>

@@ -32,7 +32,8 @@ class LiveConfig
             'mode'           => 'dry_run',    // 'dry_run' = real prices, simulated orders | 'live' = real orders on Zerodha
             'alert_names'    => ['RISH5-1'],  // only alerts with these names trade
             'max_alert_age_minutes' => 5,     // an alert older than this when it arrives is ignored (replays, delays)
-            'signal_valid_minutes'  => 60,    // a signal that is still waiting (Watch, or Can enter with no free slot) this long after its candle closed is dropped
+            'watch_all_day' => true,          // ChartInk sends a stock only once, so a signal that is still waiting (Watch, or Can enter with no free slot) is watched until the buying window ends
+            'signal_valid_minutes'  => 60,    // …unless watch_all_day is off: then it is dropped this long after its candle closed
 
             // ── entry ───────────────────────────────────────────────────────
             'first_amount'   => 10000,        // ₹ for the first buy of a stock
@@ -133,6 +134,8 @@ class LiveConfig
         elseif (array_filter($names, fn ($n) => !preg_match('/^[A-Za-z0-9 _\-\.]{1,100}$/', $n))) $errors['alert_names'] = 'Alert names can use letters, numbers, spaces and - _ .';
         else $c['alert_names'] = $names;
         $num('max_alert_age_minutes', 1, 30, true);
+        $b = $bool($in['watch_all_day'] ?? null);
+        if ($b === null) $errors['watch_all_day'] = 'Choose whole day or a set time'; else $c['watch_all_day'] = $b;
         $num('signal_valid_minutes', 5, 240, true);
 
         $num('first_amount', 500, 1000000);

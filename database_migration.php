@@ -567,3 +567,35 @@ ALTER TABLE `live_signals`
   ADD COLUMN `repeat_of` INT NULL DEFAULT NULL AFTER `ignored`,
   ADD INDEX `idx_live_signals_ignored` (`ignored`, `id`);
 UPDATE `live_signals` SET `ignored` = 1 WHERE `status` = 'ignored';
+
+-- Live signals: DUPLICATES have their own table. A signal for a stock that already has a signal today (same alert, or another enabled alert) that is
+-- still waiting, was bought, or was judged Skip is stored here, not in live_signals; the trading engine never reads it. The Live Signals page lists them
+-- (Duplicates tab) and has a button that deletes them. repeat_of = the live_signals row it repeats, first_alert = that row's alert.
+-- Rows that were already stored as ignored repeats move over (the engine's own "ignored" signals — stock held / already waiting — stay in live_signals).
+CREATE TABLE `live_signal_duplicates` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `raw_id` INT NULL DEFAULT NULL,
+  `alert_name` VARCHAR(100) NOT NULL,
+  `scan_name` VARCHAR(100) NULL DEFAULT NULL,
+  `exchange` VARCHAR(10) NOT NULL DEFAULT 'NSE',
+  `symbol` VARCHAR(50) NOT NULL,
+  `trigger_price` DECIMAL(12,2) NULL DEFAULT NULL,
+  `sector` VARCHAR(80) NULL DEFAULT NULL,
+  `market_cap` VARCHAR(30) NULL DEFAULT NULL,
+  `alert_rsi` DECIMAL(8,2) NULL DEFAULT NULL,
+  `alert_close` DECIMAL(12,2) NULL DEFAULT NULL,
+  `triggered_at` DATETIME NOT NULL,
+  `received_at` DATETIME NOT NULL,
+  `repeat_of` INT NULL DEFAULT NULL,
+  `first_alert` VARCHAR(100) NULL DEFAULT NULL,
+  `reason` VARCHAR(190) NULL DEFAULT NULL,
+  `created_at` DATETIME NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_live_signal_duplicate` (`alert_name`, `symbol`, `triggered_at`),
+  INDEX (`triggered_at`),
+  INDEX (`repeat_of`)
+) ENGINE=InnoDB;
+INSERT IGNORE INTO `live_signal_duplicates` (raw_id, alert_name, scan_name, exchange, symbol, trigger_price, sector, market_cap, alert_rsi, alert_close, triggered_at, received_at, repeat_of, first_alert, reason, created_at)
+  SELECT s.raw_id, s.alert_name, s.scan_name, s.exchange, s.symbol, s.trigger_price, s.sector, s.market_cap, s.alert_rsi, s.alert_close, s.triggered_at, s.received_at, s.repeat_of, f.alert_name, s.reason, s.created_at
+    FROM `live_signals` s LEFT JOIN `live_signals` f ON f.id = s.repeat_of WHERE s.ignored = 1 AND s.reason LIKE 'repeat of%';
+DELETE FROM `live_signals` WHERE `ignored` = 1 AND `reason` LIKE 'repeat of%';

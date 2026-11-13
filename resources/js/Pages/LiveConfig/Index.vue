@@ -19,15 +19,34 @@ const webhookUrlKey = ref(null);
 const copiedKey = ref(false);
 const brokerReady = ref(false);
 const copied    = ref(false);
+const seenAlerts = ref([]);           // alert names ChartInk has sent lately: [{ name, calls, last_at, enabled }]
+const newAlert  = ref('');
+
+// ─── the alerts that trade: any number of them ───
+function addAlert(name) {
+    const a = (typeof name === 'string' ? name : newAlert.value).trim().replace(/,+$/, '').trim();
+    if (!a) return;
+    if (!/^[A-Za-z0-9 _\-.]{1,100}$/.test(a)) { errors.value = { ...errors.value, alert_names: 'Alert names can use letters, numbers, spaces and - _ .' }; return; }
+    if (!m.value.alert_names.includes(a)) m.value.alert_names.push(a);
+    newAlert.value = '';
+    const { alert_names, ...rest } = errors.value; errors.value = rest;
+}
+// Enter or a comma adds what is typed
+function onAlertKey(e) {
+    if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addAlert(); }
+}
+function removeAlert(a) { m.value.alert_names = m.value.alert_names.filter((x) => x !== a); }
+const suggestions = computed(() => seenAlerts.value.filter((s) => !(m.value.alert_names || []).includes(s.name)));
 
 const MODES   = [{ value: 'dry_run', label: 'Dry run — real prices, simulated orders' }, { value: 'live', label: 'LIVE — real orders on Zerodha' }];
 const ONOFF   = [{ value: 'off', label: 'Off — no new buys or averages' }, { value: 'on', label: 'On' }];
 const ORDERS  = [{ value: 'limit', label: 'Limit (a little above / below the price)' }, { value: 'market', label: 'Market' }];
+const WATCH   = [{ value: 'day', label: 'The whole day — until the buying window ends' }, { value: 'minutes', label: 'For a set time after its candle closes' }];
 const YESNO   = [{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }];
 
 function toForm(c) {
     return {
-        enabled: c.enabled ? 'on' : 'off', mode: c.mode, alert_names: c.alert_names.join(', '), max_alert_age_minutes: c.max_alert_age_minutes, signal_valid_minutes: c.signal_valid_minutes,
+        enabled: c.enabled ? 'on' : 'off', mode: c.mode, alert_names: [...c.alert_names], max_alert_age_minutes: c.max_alert_age_minutes, watch_mode: c.watch_all_day ? 'day' : 'minutes', signal_valid_minutes: c.signal_valid_minutes,
         q_max_day_chg: c.quality.max_day_chg, q_max_from_low: c.quality.max_from_low, q_max_vwap_dist: c.quality.max_vwap_dist, q_min_rsi: c.quality.min_rsi, q_max_rsi: c.quality.max_rsi,
         q_min_vol_ratio: c.quality.min_vol_ratio, q_daily_uptrend: c.quality.daily_uptrend ? 'yes' : 'no', q_d_green_min: c.quality.d_green_min, q_d_green_days: c.quality.d_green_days,
         q_max_chg_5d: c.quality.max_chg_5d, q_max_daily_rsi: c.quality.max_daily_rsi, q_max_chg_1m: c.quality.max_chg_1m,
@@ -41,7 +60,7 @@ function toForm(c) {
 
 function toConfig(f) {
     return {
-        enabled: f.enabled === 'on', mode: f.mode, alert_names: f.alert_names, max_alert_age_minutes: f.max_alert_age_minutes, signal_valid_minutes: f.signal_valid_minutes,
+        enabled: f.enabled === 'on', mode: f.mode, alert_names: f.alert_names, max_alert_age_minutes: f.max_alert_age_minutes, watch_all_day: f.watch_mode === 'day', signal_valid_minutes: f.signal_valid_minutes,
         quality: {
             max_day_chg: f.q_max_day_chg, max_from_low: f.q_max_from_low, max_vwap_dist: f.q_max_vwap_dist, min_rsi: f.q_min_rsi, max_rsi: f.q_max_rsi, min_vol_ratio: f.q_min_vol_ratio,
             daily_uptrend: f.q_daily_uptrend === 'yes', d_green_min: f.q_d_green_min, d_green_days: f.q_d_green_days, max_chg_5d: f.q_max_chg_5d, max_daily_rsi: f.q_max_daily_rsi, max_chg_1m: f.q_max_chg_1m,
@@ -59,6 +78,7 @@ function load() {
         if (!data.success) { banner.value = { bad: true, message: typeof data.message === 'string' ? data.message : 'Could not load the settings' }; return; }
         saved.value = data.config;
         m.value = toForm(data.config);
+        seenAlerts.value = data.seen_alerts || [];
         webhookUrl.value = data.webhook_url;
         webhookUrlKey.value = data.webhook_url_key;
         brokerReady.value = data.broker_ready;
@@ -132,12 +152,26 @@ function copyUrl(which) {
                     <div class="row g-3">
                         <FormSelect label="Trading" name="enabled" cls="col-6" v-model="m.enabled" :options="ONOFF" select_name="Choose" :req="true" />
                         <FormSelect label="Mode" name="mode" cls="col-6" v-model="m.mode" :options="MODES" select_name="Choose" :req="true" />
-                        <FormInput label="Alert names that trade" name="alert_names" cls="col-12" v-model="m.alert_names" placeholder="RISH5-1, …" :req="true" />
+                        <div class="col-12">
+                            <label class="form-label" style="font-size:12.5px;font-weight:600">Alerts that trade <span class="text-danger">*</span></label>
+                            <div class="alert-chips">
+                                <span v-for="a in m.alert_names" :key="a" class="alert-chip">{{ a }}<button type="button" title="Stop trading this alert" @click="removeAlert(a)"><i class="bi bi-x"></i></button></span>
+                                <input v-model="newAlert" type="text" class="alert-chip-input" placeholder="Add an alert name…" @keydown="onAlertKey" @blur="addAlert()" />
+                            </div>
+                            <div v-if="suggestions.length" class="lc-hint" style="margin-top:6px">
+                                Sent by ChartInk lately, not trading — click to add:
+                                <button v-for="s in suggestions" :key="s.name" type="button" class="alert-suggest" :title="s.calls + ' call(s), last ' + s.last_at" @click="addAlert(s.name)">+ {{ s.name }}</button>
+                            </div>
+                        </div>
                         <FormInput label="Ignore alerts older than (min)" name="max_alert_age_minutes" type="number" cls="col-6" v-model="m.max_alert_age_minutes" :req="true" />
-                        <FormInput label="A waiting signal expires after (min)" name="signal_valid_minutes" type="number" cls="col-6" v-model="m.signal_valid_minutes" :req="true" />
+                        <FormSelect label="A waiting signal is watched" name="watch_mode" cls="col-6" v-model="m.watch_mode" :options="WATCH" select_name="Choose" :req="true" />
+                        <FormInput v-if="m.watch_mode === 'minutes'" label="…for this long (min)" name="signal_valid_minutes" type="number" cls="col-6" v-model="m.signal_valid_minutes" :req="true" />
                     </div>
-                    <p class="lc-hint">A signal that is <em>Watch</em> (or <em>Can enter</em> but has no free slot) is checked again on every closed 5-minute candle, and dropped this long after its candle closed.</p>
-                    <div v-for="k in ['enabled', 'mode', 'alert_names', 'max_alert_age_minutes', 'signal_valid_minutes']" :key="k">
+                    <p class="lc-hint">
+                        <strong>Every alert listed here trades</strong> — add as many as you run on ChartInk. If two alerts (or the same one) send the same stock on the same day, only the <em>first</em> is judged while it is being watched, was bought or was rated Skip; the later one is kept apart on the Live Signals page under <em>Duplicates</em>.
+                        A signal that is <em>Watch</em> (or <em>Can enter</em> but has no free slot) is checked again on every closed 5-minute candle, <strong>{{ m.watch_mode === 'day' ? 'all day, until ' + (m.entry_until || 'the buying window ends') : 'for ' + (m.signal_valid_minutes || '…') + ' min after its candle closed' }}</strong>. Keep "the whole day" while ChartInk is set to send a stock only once.
+                    </p>
+                    <div v-for="k in ['enabled', 'mode', 'alert_names', 'max_alert_age_minutes', 'watch_all_day', 'signal_valid_minutes']" :key="k">
                         <div v-if="errors[k]" class="lc-err">{{ errors[k] }}</div>
                     </div>
                 </section>
