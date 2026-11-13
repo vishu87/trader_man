@@ -209,15 +209,19 @@ press Enter, × removes one; names ChartInk has sent in the last 30 days are off
 stores its `alert_name` *and* its `scan_name`, so alerts from different ChartInk scans can be analysed side by side (the Signals tab shows the scan
 name under the alert and has an alert filter). An alert that is not in the list is only recorded: `skipped — … recorded only`.
 
-**Duplicates have their own table (`live_signal_duplicates`).** The first signal for a stock on a day is the signal; a later one for the **same stock
-on the same day** — from the same alert **or from another enabled alert** — is a *duplicate* when that first signal is still waiting (being watched / can
-enter), was bought, or was judged **Skip** (a final answer for the day). So if alert A sends INFY and is being watched, and alert B sends INFY half
-an hour later, B's signal is skipped as a duplicate of A's. The *webhook* does this at once, before the engine sees it, and stores the duplicate in
-`live_signal_duplicates` (its alert, scan name, price, time, `repeat_of` = the signal it repeats, `first_alert` = that signal's alert) — **not** in
-`live_signals`, so the main list stays small. Nothing in the trading engine reads the duplicates table. It is **not** a duplicate when the first one
-expired or failed, or was skipped for the time of day / a missing price (the new one is a fresh chance), or on another day. Two alerts that fire the
-same stock in the same minute: the one stored first is the signal. A repeated delivery of the very same call is never stored twice. Signals of an alert
-that is only recorded are compared with that alert's own earlier signals only.
+**One signal per stock per day (duplicates have their own table, `live_signal_duplicates`).** The signal that stays in `live_signals` for a stock on a
+day is the one **triggered first** (earliest `triggered_at`, then lowest id). Any later signal for the **same stock on the same day** is a *duplicate*,
+whatever happened to the first one (watched, bought, skipped, expired or failed — there is no second try the same day), and goes to
+`live_signal_duplicates` instead (its alert, scan name, price, time, `repeat_of` = the first signal, `first_alert` = that signal's alert). The
+comparison is across **all enabled alerts**: alert A sends INFY, alert B sends it half an hour later → B's is a duplicate of A's. Signals of an alert
+that is only recorded (not enabled) are compared with that alert's own signals only, so a recorded-only alert can never keep an enabled alert's signal
+out. Two alerts firing the same stock in the same minute: the one stored first is the signal. A repeated delivery of the very same call is never stored
+twice. Nothing in the trading engine reads the duplicates table. (Code: `ChartinkWebhook::firstSignal()`; it runs when the call arrives.)
+
+**Cleaning what is already stored.** `php artisan live:dedupe-signals` (add `--dry-run` to only count, `--delete` to drop the repeats instead of moving
+them) walks every stock-day in `live_signals` from the first row and moves each repeat to the duplicates table by the same rule (`SignalDeduper`).
+It never touches a signal that is still live (new / working / watching / waiting for room) or was bought (status done, or a position / order points
+at it), and it can be run again safely. The same thing is the **Clean up Signals** button on the Duplicates tab (it asks, with the count, first).
 
 The Live Signals page has a **Duplicates** tab (count in the tab, "N duplicates" in the *Alerts today* card): newest first, filter by day and by alert,
 and a **Delete duplicates (N)** button that deletes what is shown — every duplicate, or only the chosen day's / alert's. Only the duplicates table is

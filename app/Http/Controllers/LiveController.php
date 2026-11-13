@@ -17,6 +17,7 @@ use App\Services\DayCandles;
 use App\Services\Live\Clock;
 use App\Services\Live\LiveConfig;
 use App\Services\Live\LiveTick;
+use App\Services\Live\SignalDeduper;
 
 /**
  * Live trading screens: the Live Signals page (what arrived, what we did, what we hold) and the Live Config page.
@@ -126,6 +127,19 @@ class LiveController extends Controller
 
         $n = self::duplicatesQuery($request)->delete();
         return Response::json(['success' => true, 'message' => $n ? "{$n} duplicate signal(s) deleted" : 'Nothing to delete', 'deleted' => $n, 'remaining' => DB::table('live_signal_duplicates')->count()], 200);
+    }
+
+    /**
+     * Clean the Signals list of repeats already stored in it: one signal per stock per day stays (the one triggered first), every later one moves to
+     * the duplicates table. Without `apply` it only counts (a dry run) so the page can ask first. Same as `php artisan live:dedupe-signals`.
+     */
+    public function duplicatesClean(Request $request)
+    {
+        User::AuthenticateUser($request->header('apiToken'));
+
+        $r = SignalDeduper::run($request->boolean('apply'), false);
+        $msg = $r['applied'] ? ($r['moved'] ? "{$r['moved']} repeat signal(s) moved to Duplicates" : 'Nothing to move: every stock has one signal per day already') : null;
+        return Response::json(['success' => true, 'message' => $msg] + $r, 200);
     }
 
     private static function duplicatesQuery(Request $request)

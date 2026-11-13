@@ -78,8 +78,7 @@ class ChartinkWebhook
             if (isset($byPos['symbol']) && is_string($byPos['symbol']) && strtoupper(trim($byPos['symbol'])) !== $symbol) $byPos = [];
             $col = $bySymbol[$symbol] ?? $byPos;
             // a duplicate of a signal we already have → its own table, never judged
-            $first = $alert !== '' ? self::
-            ($alert, $symbol, $at, !$enabled || !$valid) : null;
+            $first = $alert !== '' ? self::firstSignal($alert, $symbol, $at, !$enabled || !$valid) : null;
             if ($first) {
                 $status = 'ignored';
                 $reason = 'repeat of the ' . substr($first->triggered_at, 11, 5) . ' signal (#' . $first->id . ', ' . $first->alert_name . ', ' . self::stateOf($first) . ')';
@@ -122,31 +121,29 @@ class ChartinkWebhook
     }
 
     /**
-     * The earlier signal this one duplicates, or null: same stock, same day, not itself ignored, and
-     *   - the alert is enabled: the earlier signal — from this alert OR any other — is still waiting, was bought, or was judged Skip (a final
-     *     answer for the day); one that expired / failed, or was skipped for the time of day / a missing price, does not count — the new one is a fresh chance.
-     *     (Signals of alerts that are only recorded never count here: they have no verdict.)
-     *   - the alert is only recorded (not enabled) or the symbol is not valid: any earlier signal of THIS alert counts.
+     * The first signal of the day this one duplicates, or null. ONE signal per stock per day stays in live_signals: the one triggered FIRST.
+     * "First" = the earliest-triggered row (then the lowest id) in live_signals for the same stock on the same day (triggered_at date), that is not
+     * itself an engine-ignored row, and
+     *   - this alert is enabled: among the signals of ANY enabled alert (so alert B's later signal is a duplicate of alert A's first), whatever
+     *     happened to that first one (watched, bought, skipped, expired, failed);
+     *   - this alert is only recorded (not enabled) or the symbol is not valid: among the signals of THIS alert only — a recorded-only alert must
+     *     never keep an enabled alert's signal out.
+     * Two alerts firing the same stock in the same minute: the one stored first is the signal (the same alert's own row at that time never counts).
+     * Any later signal then goes to live_signal_duplicates. SignalDeduper applies the same rule to what is already stored.
      */
     private static function firstSignal(string $alert, string $symbol, \Illuminate\Support\Carbon $at, bool $recordOnly): ?object
     {
         $q = DB::table('live_signals')->where('symbol', $symbol)->where('ignored', 0)
-            ->where('triggered_at', '>=', $at->copy()->startOfDay()->toDateTimeString())->where('triggered_at', '<=', $at->toDateTimeString())->orderBy('id');
-        // (two alerts firing the same stock in the same minute: the one stored first is the signal, not the same alert's own row again)
+            ->where('triggered_at', '>=', $at->copy()->startOfDay()->toDateTimeString())->where('triggered_at', '<=', $at->toDateTimeString())
+            ->orderBy('triggered_at')->orderBy('id');
         $q->whereNot(fn ($x) => $x->where('alert_name', mb_substr($alert, 0, 100))->where('triggered_at', $at->toDateTimeString()));
-        if ($recordOnly) {
-            $q->where('alert_name', mb_substr($alert, 0, 100));
-        } else {
-            $q->where(function ($w) {
-                $w->whereIn('status', ['new', 'working', 'watching', 'enter', 'done'])
-                  ->orWhere(fn ($x) => $x->where('status', 'skipped')->where('verdict', 'skip'));
-            });
-        }
+        if ($recordOnly) $q->where('alert_name', mb_substr($alert, 0, 100));
+        else $q->whereIn('alert_name', LiveConfig::get()['alert_names']);
         return $q->first(['id', 'alert_name', 'status', 'triggered_at']);
     }
 
-    private static function stateOf(object $first): string
+    public static function stateOf(object $first): string
     {
-        return ['new' => 'waiting for its candle', 'working' => 'being checked', 'watching' => 'being watched', 'enter' => 'can enter', 'done' => 'bought', 'skipped' => 'skipped'][$first->status] ?? $first->status;
+        return ['new' => 'waiting for its candle', 'working' => 'being checked', 'watching' => 'being watched', 'enter' => 'can enter', 'done' => 'bought', 'skipped' => 'skipped', 'expired' => 'expired', 'failed' => 'failed', 'ignored' => 'ignored'][$first->status] ?? $first->status;
     }
 }

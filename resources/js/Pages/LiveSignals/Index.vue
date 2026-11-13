@@ -19,6 +19,7 @@ const dupDays   = ref({});                 // 'Y-m-d' => how many
 const dupDay    = ref('all');
 const dupAlert  = ref('all');
 const deletingDups = ref(false);
+const cleaning = ref(false);
 const positions = ref({ open: [], closed: [] });
 const orders    = ref([]);
 const tab       = ref('signals');          // signals | positions | orders
@@ -89,6 +90,28 @@ function setFilter(f) {
     filter.value = f;
     if (f === 'ignored') loadIgnored();
     if (f === 'duplicates') loadDuplicates();
+}
+
+// repeats already sitting in the Signals list (older data): keep the first signal of each stock per day, move the rest here
+function cleanSignals() {
+    if (cleaning.value) return;
+    cleaning.value = true;
+    DBService.postData('/api/live/duplicates/clean', {}).then((d) => {
+        if (!d.success) { cleaning.value = false; alert(d.message || 'Could not check'); return; }
+        if (!d.moved) {
+            cleaning.value = false;
+            banner.value = { ok: true, message: 'The Signals list is clean: every stock has one signal per day' + (d.kept_active || d.kept_bought ? ' (' + (d.kept_active + d.kept_bought) + ' repeat(s) left alone because they are live or were bought)' : '') + '.' };
+            return;
+        }
+        const alerts = Object.entries(d.by_alert).map(([a, n]) => a + ': ' + n).join(', ');
+        const ok = confirm(d.moved + ' repeat signal(s) in the Signals list will move to Duplicates (' + alerts + ').\n\nFor each stock and day, only the signal triggered FIRST stays in Signals.' + (d.kept_active || d.kept_bought ? '\nLeft alone: ' + d.kept_active + ' live, ' + d.kept_bought + ' bought.' : '') + '\n\nMove them?');
+        if (!ok) { cleaning.value = false; return; }
+        DBService.postData('/api/live/duplicates/clean', { apply: 1 }).then((r) => {
+            cleaning.value = false;
+            banner.value = { ok: r.success, bad: !r.success, message: r.message || 'Could not clean' };
+            refresh();
+        });
+    }).catch(() => { cleaning.value = false; });
 }
 
 // delete the duplicates shown (every one, or only a day's / an alert's): real signals are never touched
@@ -256,6 +279,9 @@ const todayWaiting = computed(() => today('new') + today('working') + today('wat
                                 <option value="all">All alerts</option>
                                 <option v-for="a in dupAlerts" :key="a" :value="a">{{ a }}</option>
                             </select>
+                            <button class="btn-secondary-sm" :disabled="cleaning" title="Move repeats that are still in the Signals list here: only the signal triggered first for each stock and day stays" @click="cleanSignals">
+                                <span v-if="cleaning" class="spinner-border spinner-border-sm"></span><i v-else class="bi bi-funnel"></i> Clean up Signals
+                            </button>
                             <button class="btn-secondary-sm ls-del-btn" :disabled="!dupTotal || deletingDups" title="Delete the duplicates shown (every one when no day / alert is chosen)" @click="deleteDuplicates">
                                 <span v-if="deletingDups" class="spinner-border spinner-border-sm"></span><i v-else class="bi bi-trash"></i> Delete duplicates<span v-if="dupTotal"> ({{ dupTotal }})</span>
                             </button>
