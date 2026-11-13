@@ -10,16 +10,18 @@ use App\Models\LiveSignal;
 use App\Services\Live\Brokers\Broker;
 
 /**
- * Takes each live signal from arrival to a buy (or to a reason it was not bought):
+ * Takes each live signal from arrival to a buy — or to the end of the buying window:
  *
  *   new ──► (its 5-minute candle closes) classified by SignalClassifier ──► verdict
  *     Can enter ─► bought                        (status done)
  *               └► blocked by a limit / no free slot ─► status enter: waits, and is VALIDATED AGAIN before it is bought
- *     Watch     ─► status watching: re-classified on every closed candle until it becomes Can enter or runs out of time
- *     Skip      ─► status skipped
+ *     anything else (Watch, a weak daily / monthly picture, no candle yet, trading off) ─► status watching: re-classified on every closed
+ *               candle until it becomes Can enter — NO signal is skipped for its rating: ChartInk sends a stock once, so it is watched all day
+ *   expired: still waiting when the buying window (entry_until) of its day ended — or, with "watch the whole day" off, signal_valid_minutes after its candle closed
  *   ignored: the stock is already held, an entry order is already placed, or an earlier signal for it is still waiting
- *   expired: the buying window ended while it was still waiting (the whole day is watched: ChartInk sends a stock only once), or — with
- *            "watch the whole day" off — it was still waiting signal_valid_minutes after its candle closed
+ *   skipped (the only ways): the signal arrived after the buying time (entry_until) or on a weekend; the alert is not enabled (recorded only); or the
+ *            stock can never be bought by the config's own rules (ETF / fund, under the minimum price, illiquid, one lot dearer than the first-buy
+ *            amount). failed: the broker refused the order.
  *
  * Every order is written down BEFORE it is sent (status 'sending'), so a crash can never leave a real order we do not know about.
  * Nothing here reads any backtesting code. Extra buys (averages) follow the price and are checked by checkAverages().
@@ -45,6 +47,7 @@ class SignalProcessor
             $now = Clock::now();
 
             if ($s->status === 'new' && $this->ignore($s)) { $n++; continue; }
+            if ($s->status === 'new' && ($why = $this->beyondBuyingTime($s, $cfg))) { $this->skip($s, $why); $n++; continue; }   // the only time-of-day skip
             if ($s->status !== 'new' && $this->expire($s, $cfg, $now)) { $n++; continue; }
             if (!$this->due($s, $cfg, $now)) continue;
 
@@ -116,6 +119,17 @@ class SignalProcessor
         return LiveSignal::where('id', $s->id)->where('status', 'new')->update(['status' => 'ignored', 'ignored' => 1, 'repeat_of' => $of, 'reason' => $why, 'processed_at' => Clock::now()->toDateTimeString()]) === 1;
     }
 
+    // ─── skipped: a signal that arrives after the buying time (or on a day the market is shut) is never traded ──
+
+    /** @return string|null why the signal came too late to be traded: it fired after `entry_until`, or on a weekend. (Before the window opens it is simply watched.) */
+    private function beyondBuyingTime(LiveSignal $s, array $cfg): ?string
+    {
+        $t = Carbon::parse($s->triggered_at);
+        if (!$t->isWeekday()) return 'the market is closed on that day — not traded';
+        if ($t->format('H:i') > $cfg['entry_until']) return 'received after the buying time (' . $cfg['entry_until'] . ') — not traded';
+        return null;
+    }
+
     // ─── expired: out of time ────────────────────────────────────────────────
 
     private function expire(LiveSignal $s, array $cfg, Carbon $now): bool
@@ -156,9 +170,6 @@ class SignalProcessor
         $now = Clock::now();
 
         if (!in_array($s->alert_name, $cfg['alert_names'], true)) { $this->skip($s, 'alert "' . $s->alert_name . '" is not enabled'); return true; }
-        if ($prev === 'new' && (!$now->isWeekday() || $now->format('H:i') < $cfg['entry_from'] || $now->format('H:i') > $cfg['entry_until'])) {
-            $this->skip($s, 'outside the buying window (' . $cfg['entry_from'] . '–' . $cfg['entry_until'] . ')'); return true;
-        }
 
         // the stock may have been bought meanwhile by another route
         if ($pos = LivePosition::whereIn('status', ['pending', 'open'])->where('symbol', $s->symbol)->first()) {
@@ -167,7 +178,7 @@ class SignalProcessor
 
         // where it trades: NSE, else BSE (a stock neither lists cannot be judged or bought)
         $ex = $this->broker->exchange($s->symbol);
-        if ($ex === null) { $this->skip($s, 'not found on NSE or BSE'); return true; }
+        if ($ex === null) { $this->wait($s, 'watching', 'not found on NSE or BSE — will keep trying until the buying window ends'); return true; }
         if ($s->exchange !== $ex) { $s->update(['exchange' => $ex]); $s->exchange = $ex; }
 
         // look at it: on a new closed candle, or (a Can enter that was held back) once more just before the buy
@@ -181,18 +192,17 @@ class SignalProcessor
             if ($prev === 'new' && $now->lt(self::candleEnd($s)->addMinutes(self::CANDLE_WAIT_MINUTES))) return false;   // the broker has not published it yet
             if ($prev !== 'new') return false;                                                                            // try again next time; expiry ends it
             SignalClassifier::record($s, $r, $kind);
-            $this->skip($s, $r['note']); return true;
+            $this->wait($s, 'watching', $r['note'] . ' — will keep trying until the buying window ends'); return true;     // never dropped for missing data
         }
 
         SignalClassifier::record($s, $r, $kind);
         $s->refresh();
 
-        if ($r['verdict'] === 'skip') { $this->skip($s, $r['note']); return true; }
+        // Watch, or a weak daily / monthly picture ("skip" verdict): the signal comes only once, so it is kept and judged again on every closed candle
+        if ($r['verdict'] === 'watch' || $r['verdict'] === 'skip') { $this->wait($s, 'watching', $r['note']); return true; }
 
-        // judging goes on while trading is off (the page shows it), but nothing is queued or bought
-        if (!$cfg['enabled']) { $this->skip($s, 'trading is switched off — it was rated: ' . $r['verdict'] . ($r['note'] ? ' (' . $r['note'] . ')' : '')); return true; }
-
-        if ($r['verdict'] === 'watch') { $this->wait($s, 'watching', $r['note']); return true; }
+        // judging goes on while trading is off (the page shows it), but nothing is queued or bought; it is bought if trading is switched on in time
+        if (!$cfg['enabled']) { $this->wait($s, 'watching', 'trading is switched off — rated Can enter (' . $r['note'] . ')'); return true; }
 
         // Can enter
         $this->enter($s, $cfg, $r['ltp']);
@@ -205,7 +215,7 @@ class SignalProcessor
     {
         $symbol = $s->symbol;
 
-        if (!$ltp) { $this->skip($s, 'no live price from the broker'); return; }
+        if (!$ltp) { $this->wait($s, 'watching', 'no live price from the broker — will keep trying'); return; }
         if ($cfg['exclude_etf'] && self::looksLikeEtf($symbol, $this->broker->instrumentName($symbol))) { $this->skip($s, 'ETF / fund'); return; }
         if ($ltp < $cfg['min_price']) { $this->skip($s, 'price ₹' . round($ltp, 2) . ' is under the minimum ₹' . $cfg['min_price']); return; }
 

@@ -13,7 +13,7 @@ use App\Services\Scanner\SignalQuality;
  *
  *   enter  (Can enter)  every check passes: the stock is fine and so is the moment
  *   watch               a timing check fails (5-minute candle: not green, run too far, RSI, VWAP, volume…): re-checked on every closed candle
- *   skip                a context check fails (daily / monthly picture): not worth waiting for
+ *   skip                a context check fails (daily / monthly picture): shown as a weak setup — the signal is still watched (it comes only once)
  *   nodata              the candle is not there (yet)
  *
  * Only CLOSED candles are used. On top of that a price-drift guard: if the live price has already run more than DRIFT_PCT above the
@@ -100,7 +100,7 @@ class SignalClassifier
             try { $d = $f ? ($detail[$code])() : null; } catch (\Throwable $e) {}
             $parts[] = $label[$code] . ($d ? ' (' . $d . ')' : '');
         }
-        return ($verdict === 'skip' ? 'skip — ' : 'waiting — ') . implode('; ', $parts);
+        return ($verdict === 'skip' ? 'waiting (daily / monthly picture) — ' : 'waiting — ') . implode('; ', $parts);
     }
 
     /** Write the look down. @return LiveSignalCheck */

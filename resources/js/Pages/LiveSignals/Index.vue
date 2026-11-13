@@ -41,7 +41,7 @@ function ts(s) {
 // where a signal stands (status) and how it was rated (verdict)
 const SIGNAL_CHIP   = { new: 'chip-amber', working: 'chip-amber', watching: 'chip-amber', enter: 'chip-green', done: 'chip-green', skipped: 'chip-neutral', ignored: 'chip-neutral', expired: 'chip-neutral', failed: 'chip-red' };
 const SIGNAL_LABEL  = { new: 'waiting for its candle', working: 'checking…', watching: 'watching', enter: 'can enter · waiting for room', done: 'bought', skipped: 'skipped', ignored: 'ignored', expired: 'expired', failed: 'failed' };
-const VERDICT       = { enter: ['chip-green', 'Can enter'], watch: ['chip-amber', 'Watch'], skip: ['chip-red', 'Skip'], nodata: ['chip-neutral', 'No data'] };
+const VERDICT       = { enter: ['chip-green', 'Can enter'], watch: ['chip-amber', 'Watch'], skip: ['chip-amber', 'Weak'], nodata: ['chip-neutral', 'No data'] };
 const FILTERS       = [['all', 'All'], ['waiting', 'Waiting'], ['bought', 'Bought'], ['skipped', 'Skipped'], ['ignored', 'Ignored'], ['duplicates', 'Duplicates'], ['ended', 'Expired / failed']];
 const GROUP         = { new: 'waiting', working: 'waiting', watching: 'waiting', enter: 'waiting', done: 'bought', skipped: 'skipped', ignored: 'ignored', expired: 'ended', failed: 'ended' };
 const POSITION_CHIP = { pending: 'chip-amber', open: 'chip-green', closed: 'chip-neutral', cancelled: 'chip-neutral', failed: 'chip-red' };
@@ -318,7 +318,7 @@ const todayWaiting = computed(() => today('new') + today('working') + today('wat
                                     <td class="text-muted">{{ s.alert_name }}<div v-if="s.scan_name" class="cell-secondary" style="margin:0" title="The ChartInk scan this alert came from">{{ s.scan_name }}</div></td>
                                     <td class="text-num">{{ s.trigger_price ? fmtPrice(s.trigger_price) : '—' }}<div v-if="s.alert_rsi !== null" class="cell-secondary" style="margin:0">RSI {{ fmtNum(s.alert_rsi, 1) }}</div></td>
                                     <td>
-                                        <template v-if="s.verdict"><span class="status-chip" :class="VERDICT[s.verdict][0]">{{ VERDICT[s.verdict][1] }}</span><span v-if="s.score !== null" class="cell-secondary ms-1" style="margin:0" title="How many of the checks passed">{{ s.score }}%</span></template>
+                                        <template v-if="s.verdict"><span class="status-chip" :class="VERDICT[s.verdict][0]" :title="s.verdict === 'skip' ? 'The daily / monthly picture is weak right now — the signal is still watched all day' : ''">{{ VERDICT[s.verdict][1] }}</span><span v-if="s.score !== null" class="cell-secondary ms-1" style="margin:0" title="How many of the checks passed">{{ s.score }}%</span></template>
                                         <span v-else class="text-muted">—</span>
                                     </td>
                                     <td><span class="status-chip" :class="SIGNAL_CHIP[s.status]">{{ SIGNAL_LABEL[s.status] || s.status }}</span></td>

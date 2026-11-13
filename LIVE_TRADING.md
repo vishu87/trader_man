@@ -18,7 +18,7 @@ ChartInk alert ──► POST /api/chart-ink-alerts
         SignalProcessor:  ignore? ─► wait for the 5-min candle to CLOSE ─► classify (SignalClassifier, Zerodha candles)
                                    │        Can enter ─► re-validate ─► buy the 1st lot   → live_positions + live_orders
                                    │        Watch     ─► re-checked on every closed candle until Can enter / expired
-                                   │        Skip      ─► final
+                                   │        Skip      ─► shown as "Weak", still watched (a signal is never dropped for its rating)
         every minute (cron) ──►  live:tick   (LiveTick)
                                    ├─ keeps working the waiting signals (Watch, and Can enter that had no room)
                                    ├─ asks the broker how every open order stands → fills update the position
@@ -189,18 +189,28 @@ found under `/Applications/MAMP/bin/php`.
 ## 4. What happens to a signal
 
 ```
-new ──► ignored                       the stock is already held / an entry order is placed / an earlier signal for it is still waiting
+new ──► (its 5-min candle closed) ─► classify ─┬─► Can enter ─ no room ► enter (waiting for room) ─ re-validate ─► done (bought)
+ │                                              │             room ───► re-validate ────────────────────────────► done (bought)
+ │                                              └─► anything else (Watch · weak daily / monthly picture · no candle yet · trading off · no price)
+ │                                                    ► watching ──(each new closed candle: classify again)──► … ──► Can enter ─► done
  │
- └─(its 5-min candle closed)─► classify ─┬─► Skip ──────────────► skipped
-                                         ├─► Watch ─────────────► watching ──(each new closed candle: classify again)──► …
-                                         └─► Can enter ─ no room ► enter (waiting for room) ─ re-validate ─► bought
-                                                         room ───► re-validate ───────────────────────────► bought (done)
- watching / enter that run out of time ► expired        trading off ► skipped (but the verdict is kept and shown)
+ ├─► skipped    it arrived AFTER the buying time (entry_until) or on a weekend; its alert is not enabled (recorded only); it can never be
+ │              bought by your own rules (ETF / fund, under the minimum price, illiquid, one lot dearer than the first-buy amount)
+ ├─► ignored    the stock is already held / an entry order is placed / an earlier signal for it is still waiting
+ └─► failed     the broker refused the order
+
+ watching / enter that are still waiting when the buying time ends (entry_until, default 15:15) ► expired
 ```
+
+**The flow, in one line:** a signal is received (the first of the day for that stock, from any enabled alert — the rest are duplicates), it is
+`new`, then `working` / `watching` / `enter`, and ends as `done` (bought) or `expired` (never bought by the end of the buying time). **A signal is
+never dropped for its rating:** ChartInk sends a stock only once, so a weak daily / monthly picture ("Weak" in the Rated column), a failing timing check,
+a missing candle or price, or trading being switched off only keep it under watch — it is judged again on every closed 5-minute candle and is bought
+on the first candle where everything passes. An alert that fires before the buying window opens is watched until it does.
 
 **Closed candles only.** A signal is not judged while the 5-minute candle it fired in is still forming (an alert at 10:43 belongs
 to the 10:40 candle and is judged from 10:45:03). If the broker has not published that candle within 3 minutes of its close, the
-signal is skipped (`the … candle is not available from the broker`). The webhook's background process (`live:process-signals`) waits
+signal goes to `watching` (`the … candle is not available from the broker — will keep trying`) and is tried again on every tick. The webhook's background process (`live:process-signals`) waits
 for the close and acts within seconds; after that the once-a-minute tick keeps the waiting signals going (at most about a minute
 late). Only one such process runs at a time (a lock file in `storage/framework/live_process.lock`).
 
@@ -248,7 +258,7 @@ blocks a trade.
 | Group | Check | Fails → |
 |---|---|---|
 | timing (5-min candle) | closed green · not up too much today · not too far off the day's low · above VWAP but not stretched · 5-min RSI not overbought · RSI has strength · volume picking up · inside the entry window | **Watch** |
-| context (daily / monthly) | **daily uptrend: close above the 20 SMA *and* at least 3 of the last 5 daily candles green** · not up too much in 5 days · daily RSI not overbought · not up too much last month | **Skip** |
+| context (daily / monthly) | **daily uptrend: close above the 20 SMA *and* at least 3 of the last 5 daily candles green** · not up too much in 5 days · daily RSI not overbought · not up too much last month | **Weak** (rated Skip, still watched) |
 | all pass | | **Can enter** |
 | drift guard | the live price is already more than 1 % above the close of the candle judged | **Watch** (`price ₹x is already y % above the 10:00 close`) |
 
@@ -269,8 +279,8 @@ It is checked again only when something can have changed (a new candle, or room 
 **Expiry** — a *Watch* / *Can enter* signal that is still waiting when the buying window ends (default 15:15) becomes `expired` (with *whole day* off:
 also when it has waited `signal_valid_minutes`, default 60, after its candle closed) (`not bought: …` with the last reason).
 
-**Trading Off** — signals are still judged (so you can watch the verdicts), but nothing is queued or bought: the signal ends as
-`skipped` — `trading is switched off — it was rated: enter` (the verdict stays on the row).
+**Trading Off** — signals are still judged (so you can watch the verdicts), but nothing is queued or bought: the signal stays `watching` —
+`trading is switched off — rated Can enter (…)` — and is bought on a later candle if trading is switched on before the buying time ends; otherwise it expires.
 
 **Status over time.** Every look at a signal is saved (`live_signal_checks`): when, which candle, the verdict, the candle close
 and live price, RSI, distance from VWAP, day move, and what failed. Open a row with the arrow on the Signals tab to see how the status
