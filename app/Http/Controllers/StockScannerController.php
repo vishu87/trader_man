@@ -64,6 +64,6 @@ class StockScannerController extends Controller
         if (!preg_match('/^[A-Z0-9&\-\._ ]{1,50}$/', $symbol)) return $this->fail('Enter a trading symbol, like INFY');
         $exchange = $request->exchange === 'BSE' ? 'BSE' : 'NSE';
 
-        return Response::json(['success' => true, 'exchange' => $exchange, 'symbol' => $symbol] + StockScanner::check($class, $exchange, $symbol, $class::normalize($request->all())), 200);
+        return Response::json(['success' => true, 'exchange' => $exchange, 'symbol' => $symbol, 'floor' => StockScanner::floorFor($class)] + StockScanner::check($class, $exchange, $symbol, $class::normalize($request->all())), 200);
     }
 }

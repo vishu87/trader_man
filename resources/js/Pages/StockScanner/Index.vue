@@ -51,7 +51,7 @@ function run() {
 const rows = computed(() => {
     if (!result.value) return [];
     const q = search.value.trim().toLowerCase();
-    let list = result.value.results;   // the server lists scores of 50 and up
+    let list = result.value.results;   // the server lists the scanner's scores at or above its floor
     if (q) list = list.filter(r => r.symbol.toLowerCase().includes(q) || (r.name || '').toLowerCase().includes(q) || r.lists.some(l => l.toLowerCase().includes(q)));
     if (ratingFilter.value === 'none') list = list.filter(r => !r.rating);
     else if (ratingFilter.value > 0)   list = list.filter(r => (r.rating || 0) >= ratingFilter.value);
@@ -59,6 +59,16 @@ const rows = computed(() => {
     // always the best score first (same score: A to Z)
     return [...list].sort((a, b) => (b.score - a.score) || a.symbol.localeCompare(b.symbol));
 });
+
+// the result table's columns come from the scanner itself (describe().columns)
+const columns = computed(() => (scanner.value && scanner.value.columns) || []);
+function cell(c, v) {
+    if (v === null || v === undefined) return '—';
+    if (c.type === 'pct') return (v > 0 ? '+' : '') + v + (c.unit !== undefined ? c.unit : '%');
+    if (c.type === 'x') return v + '×';
+    if (c.type === 'price') return fmtPrice(v);
+    return v;
+}
 
 const scoreChip = (n) => n >= 80 ? 'chip-green' : (n >= 65 ? 'chip-amber' : 'chip-neutral');
 
@@ -200,12 +210,7 @@ const syncedText = computed(() => fresh.value && fresh.value.last_synced ? fmtDa
                                 <th style="min-width:104px">Rating</th>
                                 <th style="min-width:150px">Symbol</th>
                                 <th class="text-end" style="min-width:70px" title="Score out of 100: how well the symbol fits all the rules (partial credit for near misses)">Score</th>
-                                <th style="min-width:150px" title="The reference candle: the one that closed above the upper Bollinger band">Reference</th>
-                                <th class="text-end" title="Size of the reference candle's body">Candle</th>
-                                <th class="text-end" title="How far its close was above the upper band">Above band</th>
-                                <th class="text-end" title="RSI (9) on the reference candle">RSI 9</th>
-                                <th class="text-end" :title="`Its volume against the average of the 20 ${unit}s before`">Volume</th>
-                                <th class="text-end" :title="`RSI (9) now (latest ${unit}, still forming)`">RSI now</th>
+                                <th v-for="c in columns" :key="c.key" :class="c.type === 'ref' || c.type === 'text' ? 'text-nowrap' : 'text-end'" :style="c.type === 'ref' ? 'min-width:150px' : ''" :title="c.title">{{ c.label }}</th>
                                 <th class="text-end" title="Last stored daily close">Price</th>
                                 <th>Watchlist</th>
                                 <th class="text-end">Chart</th>
@@ -213,7 +218,7 @@ const syncedText = computed(() => fresh.value && fresh.value.last_synced ? fmtDa
                         </thead>
                         <tbody>
                             <tr v-if="!rows.length">
-                                <td colspan="11" class="text-center py-5 text-muted">{{ result.matched ? 'No results match the filters' : 'No symbol in the watchlist scores ' + result.floor + ' or more right now' }}</td>
+                                <td :colspan="columns.length + 6" class="text-center py-5 text-muted">{{ result.matched ? 'No results match the filters' : 'No symbol in the watchlist scores ' + result.floor + ' or more right now' }}</td>
                             </tr>
                             <tr v-for="r in rows" :key="r.exchange + r.symbol">
                                 <td class="text-nowrap"><StarRating :model-value="r.rating" @rate="(n) => rate(r, n)" /></td>
@@ -223,12 +228,11 @@ const syncedText = computed(() => fresh.value && fresh.value.last_synced ? fmtDa
                                     <div v-if="r.exchange !== 'NSE'" class="cell-secondary mono text-primary">{{ r.exchange }}</div>
                                 </td>
                                 <td class="text-end"><span class="status-chip" :class="scoreChip(r.score)">{{ r.score }}</span></td>
-                                <td class="text-nowrap" style="font-size:13px">{{ r.ref_label }} <span class="text-muted">· {{ ago(r.bars_ago) }}</span></td>
-                                <td class="text-num">+{{ r.body_pct }}%</td>
-                                <td class="text-num">+{{ r.above_band_pct }}%</td>
-                                <td class="text-num">{{ r.rsi_ref !== null ? r.rsi_ref : '—' }}</td>
-                                <td class="text-num">{{ r.volume_x }}×</td>
-                                <td class="text-num" :title="r.rsi_avg_above_now === false ? 'RSI average(3) is now back under average(21)' : ''">{{ r.rsi_now !== null ? r.rsi_now : '—' }}</td>
+                                <template v-for="c in columns" :key="c.key">
+                                    <td v-if="c.type === 'ref'" class="text-nowrap" style="font-size:13px">{{ r[c.key] }} <span class="text-muted">· {{ ago(r.bars_ago) }}</span></td>
+                                    <td v-else-if="c.type === 'text'" class="text-nowrap" style="font-size:13px">{{ r[c.key] }}</td>
+                                    <td v-else class="text-num" :title="c.warn_key && r[c.warn_key] === false ? c.warn_title : ''">{{ cell(c, r[c.key]) }}</td>
+                                </template>
                                 <td class="text-num">
                                     <template v-if="r.price !== null">{{ fmtPrice(r.price) }}</template><span v-else class="text-muted">—</span>
                                     <div v-if="r.price_date" class="cell-secondary">{{ fmtDate(r.price_date) }}</div>
@@ -259,7 +263,7 @@ const syncedText = computed(() => fresh.value && fresh.value.last_synced ? fmtDa
                             <div class="mb-2">
                                 <span class="mono fw-semibold">{{ checkResult.symbol }}</span>
                                 <span class="status-chip ms-2" :class="scoreChip(checkResult.score)">Score {{ checkResult.score }} / 100</span>
-                                <span class="text-muted small ms-2">{{ checkResult.score >= 50 ? 'listed in the results' : 'under 50, so not listed' }}</span>
+                                <span class="text-muted small ms-2">{{ checkResult.score >= checkResult.floor ? 'listed in the results' : 'under ' + checkResult.floor + ', so not listed' }}</span>
                                 <span v-if="checkResult.facts" class="text-muted small ms-2">reference candle: {{ checkResult.facts.ref_label }}</span>
                             </div>
                             <table class="table table-sm mb-0" style="max-width:760px">

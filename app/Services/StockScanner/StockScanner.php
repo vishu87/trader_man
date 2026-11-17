@@ -19,7 +19,7 @@ class StockScanner
     /** The scanners on offer. Add a class with describe() / evaluate() and list it here. */
     public static function scanners(): array
     {
-        return [MonthlyBollingerBreakout::class, WeeklyBollingerBreakout::class];
+        return [MonthlyBollingerBreakout::class, WeeklyBollingerBreakout::class, DailySma50Setup::class];
     }
 
     public static function find(string $key): ?string
@@ -45,16 +45,30 @@ class StockScanner
         return $out;
     }
 
-    /** Candles of one timeframe ('monthly' | 'weekly'), oldest first, for the universe: ['NSE:INFY' => [row, ...]] */
-    public static function candles(array $universe, string $timeframe): array
+    /** The lowest score a scanner lists: its own LIST_FLOOR when it sets one (a three-rule scanner needs a higher bar), else LIST_FLOOR. */
+    public static function floorFor(string $scannerClass): int
+    {
+        return defined($scannerClass . '::LIST_FLOOR') ? (int) $scannerClass::LIST_FLOOR : self::LIST_FLOOR;
+    }
+
+    /** How much history a scanner loads: its own LOOKBACK_DAYS (calendar days) when it says so, else HISTORY_YEARS. */
+    public static function since(string $scannerClass): string
+    {
+        return defined($scannerClass . '::LOOKBACK_DAYS') ? date('Y-m-d', strtotime('-' . $scannerClass::LOOKBACK_DAYS . ' days')) : date('Y-m-d', strtotime('-' . self::HISTORY_YEARS . ' years'));
+    }
+
+    const CHUNK = 100;   // symbols loaded (and judged) at a time, so a scan never holds the whole watchlist's candles in memory
+
+    /** Hands the candles to $fn a chunk of CHUNK symbols at a time: $fn(['NSE:INFY' => [row, ...], ...]), each oldest first. Symbols with no candles are not in the array. */
+    public static function eachChunk(array $universe, string $timeframe, ?string $since, callable $fn): void
     {
         $by = [];
         foreach ($universe as $u) $by[$u['exchange']][] = $u['symbol'];
 
-        $since = date('Y-m-d', strtotime('-' . self::HISTORY_YEARS . ' years'));
-        $out = [];
+        $since = $since ?? date('Y-m-d', strtotime('-' . self::HISTORY_YEARS . ' years'));
         foreach ($by as $exchange => $symbols) {
-            foreach (array_chunk($symbols, 400) as $chunk) {
+            foreach (array_chunk($symbols, self::CHUNK) as $chunk) {
+                $out = [];
                 $rows = DB::table('stock_candles')->where('exchange', $exchange)->where('timeframe', $timeframe)->whereIn('symbol', $chunk)
                     ->where('date', '>=', $since)->orderBy('symbol')->orderBy('date')
                     ->get(['symbol', 'date', 'open', 'high', 'low', 'close', 'volume', 'bb_high']);
@@ -64,9 +78,18 @@ class StockScanner
                         'volume' => (int) $r->volume, 'bb_high' => $r->bb_high !== null ? (float) $r->bb_high : null,
                     ];
                 }
+                unset($rows);
+                $fn($out);
             }
         }
-        return $out;
+    }
+
+    /** Candles of one timeframe ('monthly' | 'weekly' | 'daily') from $since on, oldest first, for (a small) universe: ['NSE:INFY' => [row, ...]] */
+    public static function candles(array $universe, string $timeframe, ?string $since = null): array
+    {
+        $all = [];
+        self::eachChunk($universe, $timeframe, $since, function (array $chunk) use (&$all) { $all += $chunk; });
+        return $all;
     }
 
     /**
@@ -75,16 +98,20 @@ class StockScanner
     public static function run(string $scannerClass, $watchlistId = 'all', array $params = []): array
     {
         $universe = self::universe($watchlistId);
-        $candles  = self::candles($universe, $scannerClass::TIMEFRAME);
+        $floor = self::floorFor($scannerClass);
 
-        $results = []; $noData = 0; $noCandles = 0;
-        foreach ($universe as $k => $u) {
-            if (empty($candles[$k])) { $noCandles++; continue; }
-            $r = $scannerClass::evaluate($candles[$k], $params);
-            if ($r['status'] === 'no_data') { $noData++; continue; }
-            if ($r['score'] < self::LIST_FLOOR) continue;
-            $results[] = ['exchange' => $u['exchange'], 'symbol' => $u['symbol'], 'name' => $u['name'], 'lists' => array_values(array_unique($u['lists'])), 'rating' => $u['rating']] + $r['facts'];
-        }
+        $results = []; $noData = 0; $withCandles = 0;
+        self::eachChunk($universe, $scannerClass::TIMEFRAME, self::since($scannerClass), function (array $chunk) use ($scannerClass, $params, $universe, $floor, &$results, &$noData, &$withCandles) {
+            foreach ($chunk as $k => $rows) {
+                $withCandles++;
+                $u = $universe[$k];
+                $r = $scannerClass::evaluate($rows, $params);
+                if ($r['status'] === 'no_data') { $noData++; continue; }
+                if ($r['score'] < $floor) continue;
+                $results[] = ['exchange' => $u['exchange'], 'symbol' => $u['symbol'], 'name' => $u['name'], 'lists' => array_values(array_unique($u['lists'])), 'rating' => $u['rating']] + $r['facts'];
+            }
+        });
+        $noCandles = count($universe) - $withCandles;   // symbols with no candle at all never reach the callback
 
         // latest daily close + its date for the matches only (the "price now", and how fresh it is)
         foreach ($results as &$m) {
@@ -94,14 +121,14 @@ class StockScanner
         }
         unset($m);
 
-        return ['results' => $results, 'scanned' => count($universe), 'no_data' => $noData, 'no_candles' => $noCandles, 'matched' => count($results), 'floor' => self::LIST_FLOOR, 'params' => $params];
+        return ['results' => $results, 'scanned' => count($universe), 'no_data' => $noData, 'no_candles' => $noCandles, 'matched' => count($results), 'floor' => self::floorFor($scannerClass), 'params' => $params];
     }
 
     /** One symbol's full check list (why it is, or is not, in the results). */
     public static function check(string $scannerClass, string $exchange, string $symbol, array $params = []): array
     {
         $timeframe = $scannerClass::TIMEFRAME;
-        $rows = self::candles([['exchange' => $exchange, 'symbol' => $symbol]], $timeframe)[$exchange . ':' . $symbol] ?? [];
+        $rows = self::candles([['exchange' => $exchange, 'symbol' => $symbol]], $timeframe, self::since($scannerClass))[$exchange . ':' . $symbol] ?? [];
         if (!$rows) return ['status' => 'no_data', 'score' => null, 'passed' => 0, 'total' => 0, 'checks' => [], 'facts' => null, 'message' => "No {$timeframe} candles stored for {$exchange}:{$symbol} — is it in a watchlist, and have its candles been synced?"];
         return $scannerClass::evaluate($rows, $params);
     }

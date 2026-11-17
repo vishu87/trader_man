@@ -53,6 +53,15 @@ abstract class BollingerBreakout
                 '20 points — RSI(9)\'s 3-' . static::UNIT . ' average crossed above its 21-' . static::UNIT . ' average within the ' . static::CROSS_WINDOW . ' ' . static::UNITS . ' up to it and is above it on that candle. (Above it but crossed earlier: 12 points; crossed in the window but now below: 5.)',
                 '15 points — Its volume is at least ' . static::DEFAULT_VOLUME_X . '× the average of the previous ' . static::VOL_LOOKBACK . ' ' . static::UNITS . '. (Scales from 1× the average = none up to ' . static::DEFAULT_VOLUME_X . '× = full.)',
             ],
+            // the result table: one entry per column ('ref' = the reference candle and how long ago; types: text, pct (signed %), num, x (×), price)
+            'columns' => [
+                ['key' => 'ref_label', 'label' => 'Reference', 'title' => 'The reference candle: the one that closed above the upper Bollinger band', 'type' => 'ref'],
+                ['key' => 'body_pct', 'label' => 'Candle', 'title' => 'Size of the reference candle\'s body', 'type' => 'pct'],
+                ['key' => 'above_band_pct', 'label' => 'Above band', 'title' => 'How far its close was above the upper band', 'type' => 'pct'],
+                ['key' => 'rsi_ref', 'label' => 'RSI 9', 'title' => 'RSI (9) on the reference candle', 'type' => 'num'],
+                ['key' => 'volume_x', 'label' => 'Volume', 'title' => 'Its volume against the average of the ' . static::VOL_LOOKBACK . ' ' . static::UNITS . ' before', 'type' => 'x'],
+                ['key' => 'rsi_now', 'label' => 'RSI now', 'title' => 'RSI (9) now (latest ' . static::UNIT . ', still forming)', 'type' => 'num', 'warn_key' => 'rsi_avg_above_now', 'warn_title' => 'RSI average(3) is now back under average(21)'],
+            ],
             'params' => [],   // fixed rules: nothing to set
         ];
     }
